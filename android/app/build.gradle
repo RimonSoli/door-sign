@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.doorsign.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.doorsign.app'
+        minSdk 26
+        targetSdk 35
+        // Each GitHub build gets a higher number so the tablet accepts it as an update.
+        versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+        versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    // A fixed signing key, so new versions install over old ones without uninstalling.
+    signingConfigs {
+        doorsign {
+            storeFile file('door-sign.keystore')
+            storePassword 'doorsign'
+            keyAlias 'doorsign'
+            keyPassword 'doorsign'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.doorsign
+        }
+        debug {
+            signingConfig signingConfigs.doorsign
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

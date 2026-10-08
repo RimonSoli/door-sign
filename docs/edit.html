@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Edit Door Sign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:opsz,wght@9..144,600&family=Caveat:wght@700&family=Bebas+Neue&family=Pacifico&family=Space+Mono:wght@700&family=Archivo+Black&display=swap">
+<link rel="stylesheet" href="sign.css">
+<style>
+main{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:calc(env(safe-area-inset-top,0px) + 20px) calc(env(safe-area-inset-bottom,0px) + 48px)}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-bottom:16px}
+.top h1{margin:0;font-size:1.6rem;font-weight:800;letter-spacing:-.01em}
+.top .who{font-size:.85rem;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.linkbtn{background:none;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:4px 0;text-decoration:underline}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.preview-wrap{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:10px;z-index:1}
+@media (max-width:820px){.preview-wrap{position:static}}
+.preview{aspect-ratio:16/10;max-width:100%;border-radius:14px;border:8px solid #222;box-shadow:0 8px 30px rgba(0,0,0,.18)}
+.tag{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.diff{font-size:.85rem;color:var(--muted)}
+.diff.pending{color:var(--danger);font-weight:600}
+.panel{display:flex;flex-direction:column;gap:22px}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+legend{padding:0;margin-bottom:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;cursor:pointer;display:flex;gap:6px;align-items:center}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
+input[type=text],input[type=email],input[type=password]{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:1rem;color:var(--fg);width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row > *{flex:1 1 140px;min-width:0}
+.emojis{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}
+.emojis button{font-size:1.4rem;padding:6px 0;border:1px solid var(--line);background:var(--surface);border-radius:8px;cursor:pointer}
+.emojis button[aria-pressed="true"],.fonts button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.fonts{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.fonts button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px;font-size:1.25rem;cursor:pointer;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.themes{display:flex;flex-wrap:wrap;gap:8px}
+.themes button{width:46px;height:46px;border-radius:10px;border:2px solid var(--line);cursor:pointer;font-weight:800;font-size:1rem;display:grid;place-items:center}
+.themes button[aria-pressed="true"]{border-color:var(--fg);transform:scale(1.06)}
+.custom{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.custom label{display:flex;align-items:center;gap:8px}
+input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-radius:6px;padding:2px;background:var(--surface)}
+.photo-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.photo-row img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--radius);padding:10px 16px;cursor:pointer;font-weight:600;color:var(--fg)}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-size:1.05rem;padding:13px 20px}
+.btn:disabled{opacity:.5;cursor:default}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.msg{font-size:.9rem;color:var(--muted)}
+.msg.err{color:var(--danger)}
+.pin-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.pin-row label.f{flex:0 1 150px}
+.pin-row input{letter-spacing:.4em;font-variant-numeric:tabular-nums}
+.lock-state b{color:var(--fg)}
+.login{max-width:380px;margin:12vh auto 0;display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px}
+.login h1{margin:0;font-size:1.4rem}
+</style>
+</head>
+<body>
+<main>
+  <!-- Sign-in -->
+  <form class="login" id="loginForm" hidden>
+    <h1>Edit Door Sign</h1>
+    <label class="f" for="email">Email
+      <input type="email" id="email" autocomplete="username" required>
+    </label>
+    <label class="f" for="password">Password
+      <input type="password" id="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn primary" id="loginBtn">Sign in</button>
+    <span class="msg" id="loginMsg"></span>
+  </form>
+
+  <!-- Editor -->
+  <div id="editor" hidden>
+    <div class="top">
+      <h1>Door Sign</h1>
+      <div class="who"><span id="whoText"></span><a class="linkbtn" href="index.html">Open sign view</a><button type="button" class="linkbtn" id="logout">Sign out</button></div>
+    </div>
+    <div class="grid">
+      <div class="preview-wrap">
+        <span class="tag">Preview</span>
+        <div class="sign preview" id="preview"></div>
+        <span class="diff" id="diff"></span>
+      </div>
+
+      <form class="panel" id="form" autocomplete="off">
+        <fieldset>
+          <legend class="tag">Quick status</legend>
+          <div class="chips" id="presets"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="tag">Message</legend>
+          <label class="f" for="text">Main text
+            <input type="text" id="text" maxlength="60" placeholder="e.g. In a meeting">
+          </label>
+          <label class="f" for="sub">Second line (optional)
+            <input type="text" id="sub" maxlength="90" placeholder="e.g. Back at 2:30 PM">
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend class="tag">Emoji</legend>
+          <div class="emojis" id="emojis"></div>
+          <div class="row">
+            <label class="f" for="emojiCustom">Or type any emoji
+              <input type="text" id="emojiCustom" maxlength="8" placeholder="Paste or type an emoji">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="tag">Font</legend>
+          <div class="fonts" id="fonts"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="tag">Colors</legend>
+          <div class="themes" id="themes"></div>
+          <div class="custom">
+            <label for="bgColor">Background <input type="color" id="bgColor"></label>
+            <label for="fgColor">Text <input type="color" id="fgColor"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="tag">Photo</legend>
+          <div class="photo-row">
+            <img id="photoThumb" alt="Current photo" hidden>
+            <label class="btn" for="photoInput" id="photoPick">Add photo</label>
+            <input type="file" id="photoInput" accept="image/*" hidden>
+            <button type="button" class="btn" id="photoRemove" hidden>Remove photo</button>
+            <span class="msg" id="photoMsg"></span>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" class="btn primary" id="save">Update sign</button>
+          <button type="button" class="btn" id="revert">Discard changes</button>
+          <span class="msg" id="saveMsg"></span>
+        </div>
+
+        <fieldset>
+          <legend class="tag">Tablet lock code</legend>
+          <span class="msg lock-state" id="lockState">Checking…</span>
+          <div class="pin-row">
+            <label class="f" for="pin1">New 4-digit code
+              <input type="password" id="pin1" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password">
+            </label>
+            <label class="f" for="pin2">Type it again
+              <input type="password" id="pin2" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password">
+            </label>
+            <button type="button" class="btn" id="pinSave">Set code</button>
+            <button type="button" class="btn" id="pinClear" hidden>Remove lock</button>
+          </div>
+          <span class="msg" id="pinMsg"></span>
+        </fieldset>
+      </form>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { app, statusRef, settingsRef, FONTS, DEFAULT_STATUS, paint, esc, hashPin } from "./sign-core.js";
+
+const $ = id => document.getElementById(id);
+const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+
+const PRESETS = [
+  { text: "Available", sub: "Come on in", emoji: "👋", font: "bricolage", bg: "#2f6b4f", fg: "#ffffff" },
+  { text: "In a meeting", sub: "Please don't knock", emoji: "🤝", font: "bebas", bg: "#b23a2e", fg: "#ffffff" },
+  { text: "Out for lunch", sub: "Back soon", emoji: "🥪", font: "caveat", bg: "#f2b544", fg: "#2a1d05" },
+  { text: "Be right back", sub: "Bathroom break", emoji: "🚻", font: "bricolage", bg: "#2b4f8f", fg: "#ffffff" },
+  { text: "On vacation", sub: "Back next week", emoji: "🏖️", font: "pacifico", bg: "#1fa3a8", fg: "#ffffff" },
+  { text: "On a call", sub: "Knock if urgent", emoji: "📞", font: "archivo", bg: "#5b3d8a", fg: "#ffffff" },
+  { text: "Do not disturb", sub: "Focus time", emoji: "🎧", font: "archivo", bg: "#1d1d1f", fg: "#f5f5f2" },
+  { text: "Gone for the day", sub: "See you tomorrow", emoji: "🌙", font: "fraunces", bg: "#24324a", fg: "#f3e6c4" }
+];
+const EMOJIS = ["👋","🤝","🥪","☕","🚻","🏖️","✈️","📞","💻","🎧","🔕","⏰","🌙","🤒","🏃","🚗","🎉","📚","🙏","⛔","✅","❤️","🍕","😊"];
+const THEMES = [["#2f6b4f","#ffffff"],["#b23a2e","#ffffff"],["#f2b544","#2a1d05"],["#2b4f8f","#ffffff"],["#1fa3a8","#ffffff"],["#5b3d8a","#ffffff"],["#1d1d1f","#f5f5f2"],["#f4f1e8","#1d1d1f"],["#e86a92","#ffffff"],["#24324a","#f3e6c4"]];
+
+let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
+
+/* ---------- Sign-in ---------- */
+onAuthStateChanged(auth, user => {
+  unsubs.forEach(u => u()); unsubs = [];
+  $("loginForm").hidden = !!user; $("editor").hidden = !user;
+  if (!user) return;
+  $("whoText").textContent = "Signed in as " + (user.email || "you");
+  unsubs.push(onSnapshot(statusRef, snap => {
+    live = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : null;
+    if (!dirty) { draft = { ...(live || DEFAULT_STATUS) }; syncForm(); }
+    render();
+  }, err => { $("diff").textContent = "Can't load the sign right now. Check your connection."; }));
+  unsubs.push(onSnapshot(settingsRef, snap => {
+    pinHash = (snap.exists() && snap.data().pinHash) || null; drawLockState();
+  }, () => {}));
+});
+$("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  $("loginBtn").disabled = true; $("loginMsg").className = "msg"; $("loginMsg").textContent = "Signing in…";
+  try { await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value); $("loginMsg").textContent = ""; }
+  catch (err) {
+    $("loginMsg").className = "msg err";
+    $("loginMsg").textContent = err && err.code === "auth/too-many-requests"
+      ? "Too many attempts. Wait a few minutes and try again."
+      : "That email and password don't match. Try again.";
+  }
+  $("loginBtn").disabled = false;
+};
+$("logout").onclick = () => signOut(auth);
+
+/* ---------- Controls ---------- */
+$("presets").innerHTML = PRESETS.map((p, i) => `<button type="button" class="chip" data-i="${i}" aria-pressed="false"><span>${p.emoji}</span>${esc(p.text)}</button>`).join("");
+$("emojis").innerHTML = `<button type="button" data-e="" aria-pressed="false" title="No emoji" style="font-size:.85rem">None</button>` + EMOJIS.map(e => `<button type="button" data-e="${e}" aria-pressed="false">${e}</button>`).join("");
+$("fonts").innerHTML = Object.entries(FONTS).map(([k, f]) => `<button type="button" data-f="${k}" aria-pressed="false" style="font-family:${esc(f.css)};font-weight:${f.w}">${f.name}</button>`).join("");
+$("themes").innerHTML = THEMES.map(([b, f], i) => `<button type="button" data-t="${i}" aria-pressed="false" style="background:${b};color:${f}" aria-label="Color theme ${i + 1}">Aa</button>`).join("");
+
+$("presets").onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; const p = PRESETS[b.dataset.i];
+  Object.assign(draft, { text: p.text, sub: p.sub, emoji: p.emoji, font: p.font, bg: p.bg, fg: p.fg }); changed(true); };
+$("emojis").onclick = e => { const b = e.target.closest("[data-e]"); if (!b) return; draft.emoji = b.dataset.e; $("emojiCustom").value = ""; changed(true); };
+$("fonts").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; draft.font = b.dataset.f; changed(true); };
+$("themes").onclick = e => { const b = e.target.closest("[data-t]"); if (!b) return; [draft.bg, draft.fg] = THEMES[b.dataset.t]; changed(true); };
+$("text").oninput = e => { draft.text = e.target.value; changed(false); };
+$("sub").oninput = e => { draft.sub = e.target.value; changed(false); };
+$("emojiCustom").oninput = e => { draft.emoji = e.target.value.trim(); changed(false); };
+$("bgColor").oninput = e => { draft.bg = e.target.value; changed(false); };
+$("fgColor").oninput = e => { draft.fg = e.target.value; changed(false); };
+$("revert").onclick = () => { draft = { ...(live || DEFAULT_STATUS) }; dirty = false; syncForm(); render(); $("saveMsg").textContent = ""; };
+$("form").onsubmit = e => { e.preventDefault(); save(); };
+$("photoInput").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) addPhoto(f); };
+$("photoRemove").onclick = () => { draft.photo = null; changed(true); };
+
+function syncForm() {
+  $("text").value = draft.text || ""; $("sub").value = draft.sub || "";
+  $("bgColor").value = /^#[0-9a-f]{6}$/i.test(draft.bg) ? draft.bg : "#2f6b4f";
+  $("fgColor").value = /^#[0-9a-f]{6}$/i.test(draft.fg) ? draft.fg : "#ffffff";
+  const inGrid = draft.emoji === "" || EMOJIS.includes(draft.emoji);
+  if (!inGrid && document.activeElement !== $("emojiCustom")) $("emojiCustom").value = draft.emoji || "";
+}
+function changed(full) { dirty = true; if (full) syncForm(); render(); }
+
+function render() {
+  paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt });
+  document.querySelectorAll("#presets [data-i]").forEach(b => { const p = PRESETS[b.dataset.i]; b.setAttribute("aria-pressed", String(p.text === draft.text && p.bg === draft.bg)); });
+  document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));
+  document.querySelectorAll("#fonts [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === draft.font)));
+  document.querySelectorAll("#themes [data-t]").forEach(b => { const [t, f] = THEMES[b.dataset.t]; b.setAttribute("aria-pressed", String(t === draft.bg && f === draft.fg)); });
+  const th = $("photoThumb");
+  if (draft.photo) { th.src = draft.photo; th.hidden = false; $("photoRemove").hidden = false; $("photoPick").textContent = "Change photo"; }
+  else { th.hidden = true; $("photoRemove").hidden = true; $("photoPick").textContent = "Add photo"; }
+  const d = $("diff");
+  if (dirty) { d.textContent = "Not on the sign yet. Tap Update sign to publish."; d.classList.add("pending"); }
+  else { d.textContent = live ? "Showing what's on the sign now." : "Nothing published yet. Pick a status and tap Update sign."; d.classList.remove("pending"); }
+}
+
+async function save() {
+  const body = {
+    text: (draft.text || "").trim() || "Available", sub: (draft.sub || "").trim(), emoji: draft.emoji || "",
+    font: draft.font || "bricolage", bg: draft.bg || "#2f6b4f", fg: draft.fg || "#ffffff",
+    photo: draft.photo || null, updatedAt: new Date().toISOString()
+  };
+  $("save").disabled = true; $("saveMsg").className = "msg"; $("saveMsg").textContent = "Updating…";
+  try { await setDoc(statusRef, body); dirty = false; draft = { ...body }; $("saveMsg").textContent = "Sign updated."; }
+  catch (err) {
+    $("saveMsg").className = "msg err";
+    $("saveMsg").textContent = err && err.code === "permission-denied"
+      ? "This account isn't allowed to change the sign. Sign in with the owner account."
+      : "Couldn't update the sign. Check your connection and try again.";
+  }
+  $("save").disabled = false; render();
+}
+
+/* Photos are shrunk in the browser and stored with the status, so no file storage plan is needed. */
+async function addPhoto(file) {
+  const m = $("photoMsg"); m.className = "msg"; m.textContent = "Preparing photo…";
+  if (!/^image\//.test(file.type)) { m.className = "msg err"; m.textContent = "That file isn't a photo. Try a JPG or PNG."; return; }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let max = 1200, q = 0.8, out = "";
+    for (let tries = 0; tries < 6; tries++) {
+      const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length < 600000) break;
+      max = Math.round(max * 0.8); q = Math.max(0.5, q - 0.08);
+    }
+    if (out.length >= 600000) throw new Error("too big");
+    draft.photo = out; m.textContent = ""; changed(true);
+  } catch (e) {
+    m.className = "msg err"; m.textContent = "Couldn't use that photo. Try a different one.";
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ---------- Lock code ---------- */
+function drawLockState() {
+  $("lockState").innerHTML = pinHash
+    ? "Lock is <b>on</b>. The tablet asks for this code before anyone can leave the sign."
+    : "Lock is <b>off</b>. Anyone at the tablet can leave the sign.";
+  $("pinClear").hidden = !pinHash; $("pinSave").textContent = pinHash ? "Change code" : "Set code";
+}
+$("pinSave").onclick = async () => {
+  const a = $("pin1").value.trim(), b = $("pin2").value.trim(), m = $("pinMsg"); m.className = "msg";
+  if (!/^\d{4}$/.test(a)) { m.className = "msg err"; m.textContent = "The code must be exactly 4 digits."; return; }
+  if (a !== b) { m.className = "msg err"; m.textContent = "The two codes don't match."; return; }
+  try {
+    await setDoc(settingsRef, { pinHash: await hashPin(a), updatedAt: new Date().toISOString() });
+    $("pin1").value = ""; $("pin2").value = ""; m.textContent = "Lock code saved. The tablet picks it up right away.";
+  } catch (e) { m.className = "msg err"; m.textContent = "Couldn't save the code. Check your connection and try again."; }
+};
+$("pinClear").onclick = async () => {
+  const m = $("pinMsg"); m.className = "msg";
+  try { await setDoc(settingsRef, { pinHash: null, updatedAt: new Date().toISOString() }); m.textContent = "Lock removed."; }
+  catch (e) { m.className = "msg err"; m.textContent = "Couldn't remove the lock. Try again."; }
+};
+syncForm(); render();
+</script>
+</body>
+</html>

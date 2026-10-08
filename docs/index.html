@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Door Sign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:opsz,wght@9..144,600&family=Caveat:wght@700&family=Bebas+Neue&family=Pacifico&family=Space+Mono:wght@700&family=Archivo+Black&display=swap">
+<link rel="stylesheet" href="sign.css">
+<style>
+html,body{overflow:hidden;background:#111}
+#sign{position:fixed;inset:0}
+.clock{position:fixed;top:calc(env(safe-area-inset-top,0px) + 2.2vmin);right:3vmin;font-size:clamp(1rem,3.4vmin,2.6rem);font-weight:600;opacity:.7;font-variant-numeric:tabular-nums;color:var(--s-fg,#fff);font-family:var(--ui);z-index:2}
+.ctrl{position:fixed;left:2vmin;top:calc(env(safe-area-inset-top,0px) + 2vmin);display:flex;gap:8px;transition:opacity .4s;z-index:3}
+.ctrl.idle{opacity:0;pointer-events:none}
+.ctrl button{background:rgba(0,0,0,.45);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer}
+.status-note{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 7vmin);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:6px 12px;border-radius:999px;font-size:.85rem;z-index:2;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="sign" id="sign"></div>
+<div class="clock" id="clock"></div>
+<div class="ctrl idle" id="ctrl">
+  <button type="button" id="fsBtn">Fullscreen</button>
+  <button type="button" id="editBtn">Edit status</button>
+</div>
+<div class="status-note" id="note">Connecting…</div>
+
+<div class="pad" id="pad" hidden>
+  <div class="pad-box" id="padBox" role="dialog" aria-modal="true" aria-labelledby="padTitle">
+    <h2 id="padTitle">Enter lock code</h2>
+    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+    <div class="keys" id="keys">
+      <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+      <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+      <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+      <button type="button" class="small" data-k="cancel">Cancel</button><button type="button">0</button><button type="button" class="small" data-k="del">Delete</button>
+    </div>
+    <div class="pad-msg" id="padMsg"></div>
+  </div>
+</div>
+
+<script type="module">
+import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { statusRef, settingsRef, paint, DEFAULT_STATUS, hashPin } from "./sign-core.js";
+
+const $ = id => document.getElementById(id);
+// Inside the tablet app, the app provides window.DoorSignApp and handles fullscreen itself.
+const inApp = typeof window.DoorSignApp !== "undefined";
+let status = { ...DEFAULT_STATUS }, pinHash = null;
+
+function draw() { paint($("sign"), status); $("clock").style.setProperty("--s-fg", status.fg || "#fff"); }
+function tick() { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+draw(); tick(); setInterval(tick, 15000); setInterval(draw, 60000);
+
+onSnapshot(statusRef, snap => {
+  status = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : { ...DEFAULT_STATUS };
+  $("note").hidden = true; draw();
+}, () => { $("note").textContent = "Can't reach the status. Retrying…"; $("note").hidden = false; });
+
+onSnapshot(settingsRef, snap => {
+  pinHash = (snap.exists() && snap.data().pinHash) || null;
+  if (inApp) { try { window.DoorSignApp.setLocked(!!pinHash); } catch (e) {} }
+  updateButtons();
+}, () => {});
+
+/* ---------- Keep the screen awake (browser only; the app does this itself) ---------- */
+let wake = null;
+async function keepAwake() {
+  if (inApp) return;
+  try { if ("wakeLock" in navigator && document.visibilityState === "visible" && !wake) {
+    wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", keepAwake); keepAwake();
+
+/* ---------- Controls ---------- */
+const isFs = () => !!document.fullscreenElement;
+function enterFs() { const el = document.documentElement; if (!isFs() && el.requestFullscreen) el.requestFullscreen().catch(() => {}); }
+function updateButtons() {
+  $("fsBtn").hidden = inApp;
+  $("fsBtn").textContent = isFs() ? (pinHash ? "🔒 Exit fullscreen" : "Exit fullscreen") : "Fullscreen";
+  $("editBtn").textContent = inApp ? (pinHash ? "🔒 Tablet menu" : "Tablet menu") : (pinHash ? "🔒 Edit status" : "Edit status");
+}
+document.addEventListener("fullscreenchange", updateButtons);
+let idleT = null;
+function poke() { const c = $("ctrl"); c.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(() => c.classList.add("idle"), 4000); keepAwake(); }
+document.addEventListener("pointerdown", e => {
+  if (!$("pad").hidden) return;
+  poke();
+  if (!inApp && pinHash && !isFs()) enterFs();
+});
+$("fsBtn").onclick = e => { e.stopPropagation(); if (isFs()) guarded(() => document.exitFullscreen().catch(() => {})); else enterFs(); };
+$("editBtn").onclick = e => { e.stopPropagation(); guarded(leave); };
+function leave() {
+  if (inApp) { try { window.DoorSignApp.unlocked(); } catch (e) {} }
+  else location.href = "edit.html";
+}
+// The tablet app calls this when Back is pressed.
+window.doorSignBack = () => { if ($("pad").hidden) guarded(leave); else closePad(); };
+
+/* ---------- Lock keypad ---------- */
+let padAction = null, entry = "", fails = 0, lockedUntil = 0;
+function guarded(action) { if (!pinHash) { action(); return; } padAction = action; openPad(); }
+function openPad() { entry = ""; drawDots(); $("padMsg").textContent = lockedMsg(); $("pad").hidden = false; }
+function closePad() { $("pad").hidden = true; padAction = null; entry = ""; }
+function lockedMsg() { const s = Math.ceil((lockedUntil - Date.now()) / 1000); return s > 0 ? `Too many tries. Wait ${s} seconds.` : ""; }
+function drawDots() { [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i < entry.length)); }
+$("keys").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.k === "cancel") { closePad(); return; }
+  if (b.dataset.k === "del") { entry = entry.slice(0, -1); drawDots(); return; }
+  if (Date.now() < lockedUntil) { $("padMsg").textContent = lockedMsg(); return; }
+  if (entry.length >= 4) return;
+  entry += b.textContent.trim(); drawDots();
+  if (entry.length === 4) {
+    if ((await hashPin(entry)) === pinHash) { fails = 0; const a = padAction; closePad(); a && a(); }
+    else {
+      fails++; entry = ""; drawDots();
+      const box = $("padBox"); box.classList.remove("shake"); void box.offsetWidth; box.classList.add("shake");
+      if (fails >= 5) { lockedUntil = Date.now() + 60000; fails = 0; }
+      $("padMsg").textContent = lockedMsg() || "Wrong code. Try again.";
+    }
+  }
+};
+updateButtons();
+</script>
+</body>
+</html>

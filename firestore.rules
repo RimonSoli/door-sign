@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The door sign: anyone can read it (the tablet needs no login);
+    // only the owner account can change it.
+    match /sign/{docId} {
+      allow read: if docId in ['current', 'settings'];
+      allow write: if docId in ['current', 'settings']
+                   && request.auth != null
+                   && request.auth.token.email.lower() == 'OWNER_EMAIL'
+                   && request.resource.size() < 20;
+    }
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
