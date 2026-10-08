@@ -1,17 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A door hanger sign: a rounded card with a hole near the top and two text lines -->
+<!-- A white sign hanging from a nail by a cord, with two "text" lines.
+     Everything sits inside the adaptive-icon safe zone (the middle 66dp). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Cord from the nail to the sign's top corners -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M40,46 L54,31 L68,46" />
+
+    <!-- Nail -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M40,30 h28 a6,6 0 0 1 6,6 v36 a6,6 0 0 1 -6,6 h-28 a6,6 0 0 1 -6,-6 v-36 a6,6 0 0 1 6,-6 z" />
+        android:pathData="M54,31 m-3.4,0 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0" />
+
+    <!-- Sign card -->
     <path
-        android:fillColor="#2F6B4F"
-        android:pathData="M54,36 m-5,0 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M39,44 H69 A5,5 0 0 1 74,49 V69 A5,5 0 0 1 69,74 H39 A5,5 0 0 1 34,69 V49 A5,5 0 0 1 39,44 Z" />
+
+    <!-- Text lines on the sign -->
     <path
-        android:fillColor="#2F6B4F"
-        android:pathData="M42,52 h24 v5 h-24 z M45,62 h18 v4 h-18 z" />
+        android:fillColor="#F2477A"
+        android:pathData="M43,53.5 H65 A2,2 0 0 1 65,57.5 H43 A2,2 0 0 1 43,53.5 Z" />
+    <path
+        android:fillColor="#FF8A1F"
+        android:pathData="M47,62 H61 A1.6,1.6 0 0 1 61,65.2 H47 A1.6,1.6 0 0 1 47,62 Z" />
 </vector>
