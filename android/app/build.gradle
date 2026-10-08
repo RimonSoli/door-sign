@@ -11,8 +11,9 @@ android {
         minSdk 26
         targetSdk 35
         // Each GitHub build gets a higher number so the tablet accepts it as an update.
-        versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
-        versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+        def runNumber = System.getenv('GITHUB_RUN_NUMBER') ?: '1'
+        versionCode = Integer.parseInt(runNumber)
+        versionName = "1.0." + runNumber
     }
 
     // A fixed signing key, so new versions install over old ones without uninstalling.
