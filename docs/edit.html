@@ -28,8 +28,10 @@ legend{padding:0;margin-bottom:8px}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;cursor:pointer;display:flex;gap:6px;align-items:center}
 .chip:hover{border-color:var(--accent)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.my-presets{display:flex;flex-wrap:wrap;gap:8px}
-.my-presets:empty{display:none}
+.status-list{display:flex;flex-wrap:wrap;gap:8px}
+.status-list:empty{display:none}
+.list-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:4px}
+.list-tools .sub-tag{margin-top:0}
 .chip-wrap{display:inline-flex;align-items:stretch}
 .chip-wrap .chip{border-top-right-radius:0;border-bottom-right-radius:0;border-right:0}
 .chip-x{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:0 999px 999px 0;padding:0 11px 0 9px;cursor:pointer;font-size:1rem;line-height:1}
@@ -113,19 +115,21 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
              form on wide screens and pin to the bottom of the screen on phones. -->
         <div class="actions" id="actions">
           <button type="submit" form="form" class="btn primary" id="save">Update sign</button>
-          <button type="button" class="btn" id="presetSave">Save as quick button</button>
-          <button type="button" class="btn" id="revert">Discard changes</button>
+          <button type="button" class="btn" id="statusSave">Save as new status</button>
           <span class="msg" id="saveMsg" role="status"></span>
         </div>
       </div>
 
       <form class="panel" id="form" autocomplete="off">
         <fieldset>
-          <legend class="tag">Quick status</legend>
-          <div class="chips" id="presets"></div>
-          <span class="sub-tag" id="myTag" hidden>Your saved buttons</span>
-          <div class="my-presets" id="myPresets"></div>
-          <span class="msg" id="presetMsg"></span>
+          <legend class="tag">Statuses</legend>
+          <div class="status-list" id="statusList"></div>
+          <span class="msg" id="listEmpty" hidden>No statuses yet. Tap Start new status to make one.</span>
+          <div class="list-tools">
+            <button type="button" class="btn" id="newStatus">+ Start new status</button>
+            <span class="sub-tag" id="editingTag"></span>
+          </div>
+          <span class="msg" id="presetMsg" role="status"></span>
         </fieldset>
 
         <fieldset>
@@ -197,7 +201,7 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
 <script type="module">
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { onSnapshot, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { app, statusRef, settingsRef, FONTS, DEFAULT_STATUS, paint, esc, hashPin } from "./sign-core.js";
 
 const $ = id => document.getElementById(id);
@@ -229,8 +233,10 @@ const PRESETS = [
 const EMOJIS = ["👋","🤝","🥪","☕","🚻","🏖️","✈️","📞","💻","🎧","🔕","⏰","🌙","🤒","🏃","🚗","🎉","📚","🙏","⛔","✅","❤️","🍕","😊"];
 const THEMES = [["#2f6b4f","#ffffff"],["#b23a2e","#ffffff"],["#f2b544","#2a1d05"],["#2b4f8f","#ffffff"],["#1fa3a8","#ffffff"],["#5b3d8a","#ffffff"],["#1d1d1f","#f5f5f2"],["#f4f1e8","#1d1d1f"],["#e86a92","#ffffff"],["#24324a","#f3e6c4"]];
 
-let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, myPresets = [], unsubs = [];
-const MAX_PRESETS = 30;
+let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
+/* One list of statuses, all editable. activeId = the status being edited (null = a new one). */
+let statuses = [], activeId = null, newMode = false, migrating = false;
+const MAX_STATUSES = 50;
 
 /* ---------- Sign-in ---------- */
 onAuthStateChanged(auth, user => {
@@ -246,8 +252,19 @@ onAuthStateChanged(auth, user => {
   unsubs.push(onSnapshot(settingsRef, snap => {
     const d = snap.exists() ? snap.data() : {};
     pinHash = d.pinHash || null; drawLockState();
-    myPresets = Array.isArray(d.presets) ? d.presets.filter(p => p && typeof p.id === "string") : [];
-    drawMyPresets(); render();
+    if (Array.isArray(d.statuses)) {
+      statuses = d.statuses.filter(p => p && typeof p.id === "string");
+    } else {
+      // First time with the single list: start it with the original statuses plus any saved buttons.
+      statuses = startingList(Array.isArray(d.presets) ? d.presets : []);
+      if (!migrating) {
+        migrating = true;
+        setDoc(settingsRef, { statuses, presets: deleteField(), updatedAt: new Date().toISOString() }, { merge: true })
+          .catch(() => {}).finally(() => { migrating = false; });
+      }
+    }
+    if (activeId && !statuses.some(p => p.id === activeId)) activeId = null;
+    drawStatuses(); render();
   }, () => {}));
 });
 $("loginForm").onsubmit = async e => {
@@ -265,13 +282,10 @@ $("loginForm").onsubmit = async e => {
 $("logout").onclick = () => signOut(auth);
 
 /* ---------- Controls ---------- */
-$("presets").innerHTML = PRESETS.map((p, i) => `<button type="button" class="chip" data-i="${i}" aria-pressed="false"><span>${p.emoji}</span>${esc(p.text)}</button>`).join("");
 $("emojis").innerHTML = `<button type="button" data-e="" aria-pressed="false" title="No emoji" style="font-size:.85rem">None</button>` + EMOJIS.map(e => `<button type="button" data-e="${e}" aria-pressed="false">${e}</button>`).join("");
 $("fonts").innerHTML = Object.entries(FONTS).map(([k, f]) => `<button type="button" data-f="${k}" aria-pressed="false" style="font-family:${esc(f.css)};font-weight:${f.w}">${f.name}</button>`).join("");
 $("themes").innerHTML = THEMES.map(([b, f], i) => `<button type="button" data-t="${i}" aria-pressed="false" style="background:${b};color:${f}" aria-label="Color theme ${i + 1}">Aa</button>`).join("");
 
-$("presets").onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; const p = PRESETS[b.dataset.i];
-  Object.assign(draft, { text: p.text, sub: p.sub, emoji: p.emoji, font: p.font, bg: p.bg, fg: p.fg }); changed(true); };
 $("emojis").onclick = e => { const b = e.target.closest("[data-e]"); if (!b) return; draft.emoji = b.dataset.e; $("emojiCustom").value = ""; changed(true); };
 $("fonts").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; draft.font = b.dataset.f; changed(true); };
 $("themes").onclick = e => { const b = e.target.closest("[data-t]"); if (!b) return; [draft.bg, draft.fg] = THEMES[b.dataset.t]; changed(true); };
@@ -280,7 +294,6 @@ $("sub").oninput = e => { draft.sub = e.target.value; changed(false); };
 $("emojiCustom").oninput = e => { draft.emoji = e.target.value.trim(); changed(false); };
 $("bgColor").oninput = e => { draft.bg = e.target.value; changed(false); };
 $("fgColor").oninput = e => { draft.fg = e.target.value; changed(false); };
-$("revert").onclick = () => { draft = { ...(live || DEFAULT_STATUS) }; dirty = false; syncForm(); render(); $("saveMsg").textContent = ""; };
 $("form").onsubmit = e => { e.preventDefault(); save(); };
 $("photoInput").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) addPhoto(f); };
 $("photoRemove").onclick = () => { draft.photo = null; changed(true); };
@@ -296,8 +309,10 @@ function changed(full) { dirty = true; if (full) syncForm(); render(); }
 
 function render() {
   paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt }, { animate: false });
-  document.querySelectorAll("#presets [data-i]").forEach(b => { const p = PRESETS[b.dataset.i]; b.setAttribute("aria-pressed", String(p.text === draft.text && p.bg === draft.bg)); });
-  document.querySelectorAll("#myPresets [data-p]").forEach(b => { const p = myPresets.find(x => x.id === b.dataset.p); b.setAttribute("aria-pressed", String(!!p && samePreset(p, draft))); });
+  document.querySelectorAll("#statusList [data-p]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.p === activeId)));
+  const editingThis = activeId ? statuses.find(p => p.id === activeId) : null;
+  $("statusSave").textContent = editingThis ? "Save status" : "Save as new status";
+  $("editingTag").textContent = editingThis ? `Editing "${editingThis.text}"` : (newMode ? "Making a new status" : "");
   document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));
   document.querySelectorAll("#fonts [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === draft.font)));
   document.querySelectorAll("#themes [data-t]").forEach(b => { const [t, f] = THEMES[b.dataset.t]; b.setAttribute("aria-pressed", String(t === draft.bg && f === draft.fg)); });
@@ -371,18 +386,26 @@ $("pinClear").onclick = async () => {
   try { await setDoc(settingsRef, { pinHash: null, updatedAt: new Date().toISOString() }, { merge: true }); m.textContent = "Lock removed."; }
   catch (e) { m.className = "msg err"; m.textContent = "Couldn't remove the lock. Try again."; }
 };
-/* ---------- Saved quick buttons ---------- */
+/* ---------- Statuses (one list, all editable) ---------- */
 const LOOK = ["text", "sub", "emoji", "font", "bg", "fg"];
 function lookOf(s) {
   return { text: (s.text || "").trim() || "Available", sub: (s.sub || "").trim(), emoji: s.emoji || "",
     font: FONTS[s.font] ? s.font : "bricolage", bg: s.bg || "#2f6b4f", fg: s.fg || "#ffffff" };
 }
 function samePreset(a, b) { const x = lookOf(a), y = lookOf(b); return LOOK.every(k => x[k] === y[k]); }
+function newId() { return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
-function drawMyPresets() {
-  $("myTag").hidden = myPresets.length === 0;
-  $("myPresets").innerHTML = myPresets.map(p => {
-    const f = FONTS[p.font] || FONTS.bricolage;
+function startingList(saved) {
+  const list = PRESETS.map((p, i) => ({ id: "s0" + i + Math.random().toString(36).slice(2, 6), ...lookOf(p) }));
+  for (const p of saved) {
+    if (p && typeof p.id === "string" && !list.some(x => samePreset(x, p))) list.push({ id: p.id, ...lookOf(p) });
+  }
+  return list;
+}
+
+function drawStatuses() {
+  $("listEmpty").hidden = statuses.length > 0;
+  $("statusList").innerHTML = statuses.map(p => {
     return `<span class="chip-wrap">`
       + `<button type="button" class="chip" data-p="${esc(p.id)}" aria-pressed="false" title="${esc(p.sub || "")}">`
       + (p.emoji ? `<span>${esc(p.emoji)}</span>` : "")
@@ -393,56 +416,88 @@ function drawMyPresets() {
   }).join("");
 }
 
-async function writePresets(list, okMsg) {
+async function writeStatuses(list, okMsg) {
   const m = $("presetMsg"); m.className = "msg";
   try {
-    await setDoc(settingsRef, { presets: list, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(settingsRef, { statuses: list, updatedAt: new Date().toISOString() }, { merge: true });
     m.textContent = okMsg;
     setTimeout(() => { if (m.textContent === okMsg) m.textContent = ""; }, 4000);
+    return true;
   } catch (err) {
     m.className = "msg err";
     m.textContent = err && err.code === "permission-denied"
-      ? "This account isn't allowed to save buttons. Sign in with the owner account."
+      ? "This account isn't allowed to save statuses. Sign in with the owner account."
       : "Couldn't save. Check your connection and try again.";
+    return false;
   }
 }
 
-$("presetSave").onclick = async () => {
+/* Start new status: a blank status to fill in, then Save as new status. */
+$("newStatus").onclick = () => {
+  activeId = null; newMode = true;
+  Object.assign(draft, { text: "", sub: "", emoji: "", font: "bricolage", bg: "#2f6b4f", fg: "#ffffff", photo: null });
+  $("emojiCustom").value = "";
+  changed(true);
+  $("presetMsg").className = "msg"; $("presetMsg").textContent = "New status started. Fill it in, then tap Save as new status.";
+  $("text").focus({ preventScroll: true });
+  $("text").scrollIntoView({ block: "center", behavior: "smooth" });
+};
+
+/* Save status: updates the status being edited, or adds a new one. */
+$("statusSave").onclick = async () => {
   const m = $("presetMsg"); m.className = "msg";
+  if (!(draft.text || "").trim()) {
+    m.className = "msg err"; m.textContent = "Give the status a main text first.";
+    $("text").focus(); return;
+  }
   const look = lookOf(draft);
-  if (PRESETS.some(p => samePreset(p, look)) || myPresets.some(p => samePreset(p, look))) {
-    m.textContent = "That look is already a quick button."; return;
+  const existing = activeId ? statuses.find(p => p.id === activeId) : null;
+  let list, msg;
+  if (existing) {
+    list = statuses.map(p => p.id === activeId ? { id: activeId, ...look } : p);
+    msg = `Saved "${look.text}".`;
+  } else {
+    if (statuses.some(p => samePreset(p, look))) { m.textContent = "That status is already in your list."; return; }
+    if (statuses.length >= MAX_STATUSES) {
+      m.className = "msg err"; m.textContent = `You can keep up to ${MAX_STATUSES} statuses. Delete one to add another.`; return;
+    }
+    const id = newId();
+    list = [...statuses, { id, ...look }];
+    activeId = id; newMode = false;
+    msg = `Added "${look.text}" to your statuses.`;
   }
-  if (myPresets.length >= MAX_PRESETS) {
-    m.className = "msg err"; m.textContent = `You can save up to ${MAX_PRESETS} buttons. Delete one to add another.`; return;
-  }
-  const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  $("presetSave").disabled = true;
-  await writePresets([...myPresets, { id, ...look }], `Saved "${look.text}" as a quick button.`);
-  $("presetSave").disabled = false;
+  $("statusSave").disabled = true;
+  await writeStatuses(list, msg);
+  $("statusSave").disabled = false;
+  render();
 };
 
 let pendingDelete = null, pendingTimer = null;
-$("myPresets").onclick = async e => {
+$("statusList").onclick = async e => {
   const del = e.target.closest("[data-del]");
   if (del) {
     const id = del.dataset.del;
     if (pendingDelete !== id) {
       // First tap asks; second tap deletes.
-      document.querySelectorAll("#myPresets .chip-x.confirm").forEach(x => { x.classList.remove("confirm"); x.textContent = "×"; });
+      document.querySelectorAll("#statusList .chip-x.confirm").forEach(x => { x.classList.remove("confirm"); x.textContent = "×"; });
       pendingDelete = id; del.classList.add("confirm"); del.textContent = "Delete?";
       clearTimeout(pendingTimer);
       pendingTimer = setTimeout(() => { pendingDelete = null; del.classList.remove("confirm"); del.textContent = "×"; }, 4000);
       return;
     }
     pendingDelete = null; clearTimeout(pendingTimer);
-    const gone = myPresets.find(p => p.id === id);
-    await writePresets(myPresets.filter(p => p.id !== id), `Deleted "${gone ? gone.text : "button"}".`);
+    const gone = statuses.find(p => p.id === id);
+    if (activeId === id) activeId = null;
+    await writeStatuses(statuses.filter(p => p.id !== id), `Deleted "${gone ? gone.text : "status"}".`);
+    render();
     return;
   }
   const b = e.target.closest("[data-p]"); if (!b) return;
-  const p = myPresets.find(x => x.id === b.dataset.p); if (!p) return;
-  Object.assign(draft, lookOf(p)); changed(true);
+  const p = statuses.find(x => x.id === b.dataset.p); if (!p) return;
+  activeId = p.id; newMode = false;
+  Object.assign(draft, lookOf(p)); $("emojiCustom").value = "";
+  changed(true);
+  $("presetMsg").textContent = "";
 };
 
 syncForm(); render();
