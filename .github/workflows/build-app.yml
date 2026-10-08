@@ -33,7 +33,17 @@ jobs:
 
       - name: Build the app
         working-directory: android
-        run: gradle assembleRelease --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee ../build.log
+
+      - name: Report build errors
+        if: failure()
+        shell: bash
+        run: |
+          msg=$(grep -E "error:|ERROR|FAILURE|What went wrong|Could not|Exception|> " build.log | grep -v "^\s*at " | head -40 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+          echo "::error title=Build log::$msg"
 
       - name: Name the file
         run: cp android/app/build/outputs/apk/release/app-release.apk DoorSign.apk
