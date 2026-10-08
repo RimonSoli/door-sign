@@ -115,7 +115,6 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
              form on wide screens and pin to the bottom of the screen on phones. -->
         <div class="actions" id="actions">
           <button type="submit" form="form" class="btn primary" id="save">Update sign</button>
-          <button type="button" class="btn" id="statusSave">Save as new status</button>
           <span class="msg" id="saveMsg" role="status"></span>
         </div>
       </div>
@@ -126,7 +125,7 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
           <div class="status-list" id="statusList"></div>
           <span class="msg" id="listEmpty" hidden>No statuses yet. Tap Start new status to make one.</span>
           <div class="list-tools">
-            <button type="button" class="btn" id="newStatus">+ Start new status</button>
+            <button type="button" class="btn" id="statusBtn">+ Start new status</button>
             <span class="sub-tag" id="editingTag"></span>
           </div>
           <span class="msg" id="presetMsg" role="status"></span>
@@ -235,7 +234,7 @@ const THEMES = [["#2f6b4f","#ffffff"],["#b23a2e","#ffffff"],["#f2b544","#2a1d05"
 
 let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
 /* One list of statuses, all editable. activeId = the status being edited (null = a new one). */
-let statuses = [], activeId = null, newMode = false, migrating = false;
+let statuses = [], activeId = null, newMode = false, touched = false, migrating = false;
 const MAX_STATUSES = 50;
 
 /* ---------- Sign-in ---------- */
@@ -305,13 +304,15 @@ function syncForm() {
   const inGrid = draft.emoji === "" || EMOJIS.includes(draft.emoji);
   if (!inGrid && document.activeElement !== $("emojiCustom")) $("emojiCustom").value = draft.emoji || "";
 }
-function changed(full) { dirty = true; if (full) syncForm(); render(); }
+function changed(full) { dirty = true; touched = true; if (full) syncForm(); render(); }
 
 function render() {
   paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt }, { animate: false });
   document.querySelectorAll("#statusList [data-p]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.p === activeId)));
   const editingThis = activeId ? statuses.find(p => p.id === activeId) : null;
-  $("statusSave").textContent = editingThis ? "Save status" : "Save as new status";
+  const sb = $("statusBtn");
+  sb.textContent = isBuilding() ? "Save status" : "+ Start new status";
+  sb.classList.toggle("primary", isBuilding());
   $("editingTag").textContent = editingThis ? `Editing "${editingThis.text}"` : (newMode ? "Making a new status" : "");
   document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));
   document.querySelectorAll("#fonts [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === draft.font)));
@@ -432,18 +433,29 @@ async function writeStatuses(list, okMsg) {
 }
 
 /* Start new status: a blank status to fill in, then Save as new status. */
-$("newStatus").onclick = () => {
+/* One button: "Start new status" when idle, "Save status" while building or editing one. */
+function isBuilding() {
+  if (newMode) return true;
+  if (activeId) {
+    const p = statuses.find(x => x.id === activeId);
+    return !!p && !samePreset(p, draft);
+  }
+  return touched;
+}
+$("statusBtn").onclick = () => { if (isBuilding()) saveStatus(); else startNewStatus(); };
+
+function startNewStatus() {
   activeId = null; newMode = true;
   Object.assign(draft, { text: "", sub: "", emoji: "", font: "bricolage", bg: "#2f6b4f", fg: "#ffffff", photo: null });
   $("emojiCustom").value = "";
-  changed(true);
-  $("presetMsg").className = "msg"; $("presetMsg").textContent = "New status started. Fill it in, then tap Save as new status.";
+  changed(true); touched = false; render();
+  $("presetMsg").className = "msg"; $("presetMsg").textContent = "New status started. Fill it in, then tap Save status.";
   $("text").focus({ preventScroll: true });
   $("text").scrollIntoView({ block: "center", behavior: "smooth" });
 };
 
 /* Save status: updates the status being edited, or adds a new one. */
-$("statusSave").onclick = async () => {
+async function saveStatus() {
   const m = $("presetMsg"); m.className = "msg";
   if (!(draft.text || "").trim()) {
     m.className = "msg err"; m.textContent = "Give the status a main text first.";
@@ -465,11 +477,12 @@ $("statusSave").onclick = async () => {
     activeId = id; newMode = false;
     msg = `Added "${look.text}" to your statuses.`;
   }
-  $("statusSave").disabled = true;
-  await writeStatuses(list, msg);
-  $("statusSave").disabled = false;
+  $("statusBtn").disabled = true;
+  const ok = await writeStatuses(list, msg);
+  $("statusBtn").disabled = false;
+  if (ok) { newMode = false; touched = false; }
   render();
-};
+}
 
 let pendingDelete = null, pendingTimer = null;
 $("statusList").onclick = async e => {
@@ -495,7 +508,7 @@ $("statusList").onclick = async e => {
   const p = statuses.find(x => x.id === b.dataset.p); if (!p) return;
   activeId = p.id; newMode = false;
   Object.assign(draft, lookOf(p)); $("emojiCustom").value = "";
-  changed(true);
+  changed(true); touched = false; render();
   $("presetMsg").textContent = "";
 };
 
