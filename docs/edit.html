@@ -409,7 +409,6 @@ function drawStatuses() {
     return `<span class="chip-wrap">`
       + `<button type="button" class="chip" data-p="${esc(p.id)}" aria-pressed="false" title="${esc(p.sub || "")}">`
       + (p.emoji ? `<span>${esc(p.emoji)}</span>` : "")
-      + `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${esc(p.bg)};border:1px solid var(--line)"></span>`
       + `${esc(p.text)}</button>`
       + `<button type="button" class="chip-x" data-del="${esc(p.id)}" aria-label="Delete ${esc(p.text)}">×</button>`
       + `</span>`;
