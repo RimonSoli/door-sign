@@ -39,18 +39,40 @@ export function fmtUpdated(iso) {
 }
 
 // Draws a status into a .sign element.
-export function paint(el, s, { meta = true } = {}) {
+// The sign is rebuilt only when something visible changed (text, emoji, font,
+// colors or photo). Otherwise just the small "Updated …" line is refreshed, so
+// live updates and the once-a-minute refresh never make the sign flicker.
+// With animate: true, a real change plays a short grow-in; the editor preview
+// passes animate: false so typing doesn't animate on every keystroke.
+export function paint(el, s, { meta = true, animate = true } = {}) {
   const f = FONTS[s.font] || FONTS.bricolage;
-  el.style.setProperty("--s-bg", safeColor(s.bg) || "#2f6b4f");
-  el.style.setProperty("--s-fg", safeColor(s.fg) || "#ffffff");
-  el.style.setProperty("--s-font", f.css);
+  const bg = safeColor(s.bg) || "#2f6b4f";
+  const fg = safeColor(s.fg) || "#ffffff";
   const photo = safePhoto(s.photo);
+  const key = JSON.stringify([s.text || "", s.sub || "", s.emoji || "", s.font || "", bg, fg, photo ? photo.length + ":" + photo.slice(-64) : ""]);
+  const metaText = meta && s.updatedAt ? fmtUpdated(s.updatedAt) : "";
+
+  if (el.dataset.key === key) {
+    const m = el.querySelector(".s-meta");
+    if (m) { if (m.textContent !== metaText) m.textContent = metaText; }
+    else if (metaText) el.insertAdjacentHTML("beforeend", `<div class="s-meta">${esc(metaText)}</div>`);
+    return;
+  }
+  const first = !el.dataset.key;
+  el.dataset.key = key;
+  el.style.setProperty("--s-bg", bg);
+  el.style.setProperty("--s-fg", fg);
+  el.style.setProperty("--s-font", f.css);
   el.innerHTML =
     (photo ? `<img class="s-photo" src="${photo}" alt="">` : "") +
     (s.emoji ? `<div class="s-emoji">${esc(s.emoji)}</div>` : "") +
     `<div class="s-text" style="font-weight:${f.w}">${esc(s.text || " ")}</div>` +
     (s.sub ? `<div class="s-sub">${esc(s.sub)}</div>` : "") +
-    (meta && s.updatedAt ? `<div class="s-meta">${esc(fmtUpdated(s.updatedAt))}</div>` : "");
+    (metaText ? `<div class="s-meta">${esc(metaText)}</div>` : "");
+  if (animate && !first) {
+    el.classList.remove("animate"); void el.offsetWidth; el.classList.add("animate");
+    clearTimeout(el._animT); el._animT = setTimeout(() => el.classList.remove("animate"), 700);
+  }
 }
 
 export async function hashPin(p) {

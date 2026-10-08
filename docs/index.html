@@ -51,11 +51,14 @@ let status = { ...DEFAULT_STATUS }, pinHash = null;
 
 function draw() { paint($("sign"), status); $("clock").style.setProperty("--s-fg", status.fg || "#fff"); }
 function tick() { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
-draw(); tick(); setInterval(tick, 15000); setInterval(draw, 60000);
+// Wait for the real status before drawing, so the sign never flashes a placeholder first.
+let loaded = false;
+tick(); setInterval(tick, 15000);
+setInterval(() => { if (loaded) draw(); }, 60000); // only refreshes the "Updated …" line
 
 onSnapshot(statusRef, snap => {
   status = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : { ...DEFAULT_STATUS };
-  $("note").hidden = true; draw();
+  loaded = true; $("note").hidden = true; draw();
 }, () => { $("note").textContent = "Can't reach the status. Retrying…"; $("note").hidden = false; });
 
 onSnapshot(settingsRef, snap => {

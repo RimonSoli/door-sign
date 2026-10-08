@@ -267,7 +267,7 @@ function syncForm() {
 function changed(full) { dirty = true; if (full) syncForm(); render(); }
 
 function render() {
-  paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt });
+  paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt }, { animate: false });
   document.querySelectorAll("#presets [data-i]").forEach(b => { const p = PRESETS[b.dataset.i]; b.setAttribute("aria-pressed", String(p.text === draft.text && p.bg === draft.bg)); });
   document.querySelectorAll("#myPresets [data-p]").forEach(b => { const p = myPresets.find(x => x.id === b.dataset.p); b.setAttribute("aria-pressed", String(!!p && samePreset(p, draft))); });
   document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));

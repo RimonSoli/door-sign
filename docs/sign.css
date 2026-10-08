@@ -25,7 +25,7 @@ img{max-width:100%}
 .sign .s-text{font-family:var(--s-font);font-size:clamp(1.6rem,11cqi,8rem);line-height:1.02;text-wrap:balance;max-width:92%;overflow-wrap:anywhere}
 .sign .s-sub{font-family:var(--ui);font-weight:600;font-size:clamp(.95rem,4.4cqi,3rem);opacity:.88;text-wrap:balance;max-width:90%}
 .sign .s-meta{position:absolute;left:0;right:0;bottom:2.5cqi;font-size:clamp(.7rem,1.8cqi,1.2rem);opacity:.6;font-variant-numeric:tabular-nums}
-@media (prefers-reduced-motion:no-preference){.sign .s-text,.sign .s-emoji{animation:pop .5s ease-out}}
+@media (prefers-reduced-motion:no-preference){.sign.animate .s-text,.sign.animate .s-emoji{animation:pop .5s ease-out}}
 @keyframes pop{from{transform:scale(.96);opacity:.4}to{transform:none;opacity:1}}
 
 .pad{position:fixed;inset:0;background:rgba(10,12,10,.82);display:grid;place-items:center;z-index:10;padding:16px}
