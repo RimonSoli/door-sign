@@ -28,6 +28,15 @@ legend{padding:0;margin-bottom:8px}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;cursor:pointer;display:flex;gap:6px;align-items:center}
 .chip:hover{border-color:var(--accent)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.my-presets{display:flex;flex-wrap:wrap;gap:8px}
+.my-presets:empty{display:none}
+.chip-wrap{display:inline-flex;align-items:stretch}
+.chip-wrap .chip{border-top-right-radius:0;border-bottom-right-radius:0;border-right:0}
+.chip-x{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:0 999px 999px 0;padding:0 11px 0 9px;cursor:pointer;font-size:1rem;line-height:1}
+.chip-x:hover{color:var(--danger);border-color:var(--danger)}
+.chip-x.confirm{background:var(--danger);color:#fff;border-color:var(--danger);font-size:.8rem;font-weight:700;padding:0 12px}
+.chip-wrap .chip[aria-pressed="true"]+.chip-x{border-color:var(--accent)}
+.sub-tag{font-size:.75rem;color:var(--muted);margin-top:4px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
 input[type=text],input[type=email],input[type=password]{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:1rem;color:var(--fg);width:100%}
 .row{display:flex;gap:10px;flex-wrap:wrap}
@@ -92,6 +101,9 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
         <fieldset>
           <legend class="tag">Quick status</legend>
           <div class="chips" id="presets"></div>
+          <span class="sub-tag" id="myTag" hidden>Your saved buttons</span>
+          <div class="my-presets" id="myPresets"></div>
+          <span class="msg" id="presetMsg"></span>
         </fieldset>
 
         <fieldset>
@@ -141,6 +153,7 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
 
         <div class="actions">
           <button type="submit" class="btn primary" id="save">Update sign</button>
+          <button type="button" class="btn" id="presetSave">Save as quick button</button>
           <button type="button" class="btn" id="revert">Discard changes</button>
           <span class="msg" id="saveMsg"></span>
         </div>
@@ -188,7 +201,8 @@ const PRESETS = [
 const EMOJIS = ["👋","🤝","🥪","☕","🚻","🏖️","✈️","📞","💻","🎧","🔕","⏰","🌙","🤒","🏃","🚗","🎉","📚","🙏","⛔","✅","❤️","🍕","😊"];
 const THEMES = [["#2f6b4f","#ffffff"],["#b23a2e","#ffffff"],["#f2b544","#2a1d05"],["#2b4f8f","#ffffff"],["#1fa3a8","#ffffff"],["#5b3d8a","#ffffff"],["#1d1d1f","#f5f5f2"],["#f4f1e8","#1d1d1f"],["#e86a92","#ffffff"],["#24324a","#f3e6c4"]];
 
-let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
+let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, myPresets = [], unsubs = [];
+const MAX_PRESETS = 30;
 
 /* ---------- Sign-in ---------- */
 onAuthStateChanged(auth, user => {
@@ -202,7 +216,10 @@ onAuthStateChanged(auth, user => {
     render();
   }, err => { $("diff").textContent = "Can't load the sign right now. Check your connection."; }));
   unsubs.push(onSnapshot(settingsRef, snap => {
-    pinHash = (snap.exists() && snap.data().pinHash) || null; drawLockState();
+    const d = snap.exists() ? snap.data() : {};
+    pinHash = d.pinHash || null; drawLockState();
+    myPresets = Array.isArray(d.presets) ? d.presets.filter(p => p && typeof p.id === "string") : [];
+    drawMyPresets(); render();
   }, () => {}));
 });
 $("loginForm").onsubmit = async e => {
@@ -252,6 +269,7 @@ function changed(full) { dirty = true; if (full) syncForm(); render(); }
 function render() {
   paint($("preview"), { ...draft, updatedAt: dirty ? null : draft.updatedAt });
   document.querySelectorAll("#presets [data-i]").forEach(b => { const p = PRESETS[b.dataset.i]; b.setAttribute("aria-pressed", String(p.text === draft.text && p.bg === draft.bg)); });
+  document.querySelectorAll("#myPresets [data-p]").forEach(b => { const p = myPresets.find(x => x.id === b.dataset.p); b.setAttribute("aria-pressed", String(!!p && samePreset(p, draft))); });
   document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));
   document.querySelectorAll("#fonts [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === draft.font)));
   document.querySelectorAll("#themes [data-t]").forEach(b => { const [t, f] = THEMES[b.dataset.t]; b.setAttribute("aria-pressed", String(t === draft.bg && f === draft.fg)); });
@@ -316,15 +334,89 @@ $("pinSave").onclick = async () => {
   if (!/^\d{4}$/.test(a)) { m.className = "msg err"; m.textContent = "The code must be exactly 4 digits."; return; }
   if (a !== b) { m.className = "msg err"; m.textContent = "The two codes don't match."; return; }
   try {
-    await setDoc(settingsRef, { pinHash: await hashPin(a), updatedAt: new Date().toISOString() });
+    await setDoc(settingsRef, { pinHash: await hashPin(a), updatedAt: new Date().toISOString() }, { merge: true });
     $("pin1").value = ""; $("pin2").value = ""; m.textContent = "Lock code saved. The tablet picks it up right away.";
   } catch (e) { m.className = "msg err"; m.textContent = "Couldn't save the code. Check your connection and try again."; }
 };
 $("pinClear").onclick = async () => {
   const m = $("pinMsg"); m.className = "msg";
-  try { await setDoc(settingsRef, { pinHash: null, updatedAt: new Date().toISOString() }); m.textContent = "Lock removed."; }
+  try { await setDoc(settingsRef, { pinHash: null, updatedAt: new Date().toISOString() }, { merge: true }); m.textContent = "Lock removed."; }
   catch (e) { m.className = "msg err"; m.textContent = "Couldn't remove the lock. Try again."; }
 };
+/* ---------- Saved quick buttons ---------- */
+const LOOK = ["text", "sub", "emoji", "font", "bg", "fg"];
+function lookOf(s) {
+  return { text: (s.text || "").trim() || "Available", sub: (s.sub || "").trim(), emoji: s.emoji || "",
+    font: FONTS[s.font] ? s.font : "bricolage", bg: s.bg || "#2f6b4f", fg: s.fg || "#ffffff" };
+}
+function samePreset(a, b) { const x = lookOf(a), y = lookOf(b); return LOOK.every(k => x[k] === y[k]); }
+
+function drawMyPresets() {
+  $("myTag").hidden = myPresets.length === 0;
+  $("myPresets").innerHTML = myPresets.map(p => {
+    const f = FONTS[p.font] || FONTS.bricolage;
+    return `<span class="chip-wrap">`
+      + `<button type="button" class="chip" data-p="${esc(p.id)}" aria-pressed="false" title="${esc(p.sub || "")}">`
+      + (p.emoji ? `<span>${esc(p.emoji)}</span>` : "")
+      + `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${esc(p.bg)};border:1px solid var(--line)"></span>`
+      + `${esc(p.text)}</button>`
+      + `<button type="button" class="chip-x" data-del="${esc(p.id)}" aria-label="Delete ${esc(p.text)}">×</button>`
+      + `</span>`;
+  }).join("");
+}
+
+async function writePresets(list, okMsg) {
+  const m = $("presetMsg"); m.className = "msg";
+  try {
+    await setDoc(settingsRef, { presets: list, updatedAt: new Date().toISOString() }, { merge: true });
+    m.textContent = okMsg;
+    setTimeout(() => { if (m.textContent === okMsg) m.textContent = ""; }, 4000);
+  } catch (err) {
+    m.className = "msg err";
+    m.textContent = err && err.code === "permission-denied"
+      ? "This account isn't allowed to save buttons. Sign in with the owner account."
+      : "Couldn't save. Check your connection and try again.";
+  }
+}
+
+$("presetSave").onclick = async () => {
+  const m = $("presetMsg"); m.className = "msg";
+  const look = lookOf(draft);
+  if (PRESETS.some(p => samePreset(p, look)) || myPresets.some(p => samePreset(p, look))) {
+    m.textContent = "That look is already a quick button."; return;
+  }
+  if (myPresets.length >= MAX_PRESETS) {
+    m.className = "msg err"; m.textContent = `You can save up to ${MAX_PRESETS} buttons. Delete one to add another.`; return;
+  }
+  const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  $("presetSave").disabled = true;
+  await writePresets([...myPresets, { id, ...look }], `Saved "${look.text}" as a quick button.`);
+  $("presetSave").disabled = false;
+};
+
+let pendingDelete = null, pendingTimer = null;
+$("myPresets").onclick = async e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    const id = del.dataset.del;
+    if (pendingDelete !== id) {
+      // First tap asks; second tap deletes.
+      document.querySelectorAll("#myPresets .chip-x.confirm").forEach(x => { x.classList.remove("confirm"); x.textContent = "×"; });
+      pendingDelete = id; del.classList.add("confirm"); del.textContent = "Delete?";
+      clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => { pendingDelete = null; del.classList.remove("confirm"); del.textContent = "×"; }, 4000);
+      return;
+    }
+    pendingDelete = null; clearTimeout(pendingTimer);
+    const gone = myPresets.find(p => p.id === id);
+    await writePresets(myPresets.filter(p => p.id !== id), `Deleted "${gone ? gone.text : "button"}".`);
+    return;
+  }
+  const b = e.target.closest("[data-p]"); if (!b) return;
+  const p = myPresets.find(x => x.id === b.dataset.p); if (!p) return;
+  Object.assign(draft, lookOf(p)); changed(true);
+};
+
 syncForm(); render();
 </script>
 </body>
