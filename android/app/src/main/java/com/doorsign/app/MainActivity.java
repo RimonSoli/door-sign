@@ -3,7 +3,18 @@ package com.doorsign.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.app.TimePickerDialog;
+import android.content.Intent;
+import android.os.PowerManager;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.LinearLayout;
+import android.widget.Switch;
+import android.widget.TextView;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -67,6 +78,16 @@ public class MainActivity extends Activity {
     private long lastTouch = 0;
     private AlertDialog openDialog;
 
+    /* Screen schedule (tablet only) */
+    private final Handler scheduleHandler = new Handler(Looper.getMainLooper());
+    private View blankOverlay;
+    private TextView blankText;
+    private boolean blanked = false;
+    /** A tap during off hours shows the sign briefly, until this time. */
+    private long peekUntil = 0;
+    private PowerManager.WakeLock screenLock;
+    private static final long PEEK_MS = 60_000;
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,6 +106,20 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
+
+        // Black cover shown outside working hours.
+        FrameLayout cover = new FrameLayout(this);
+        cover.setBackgroundColor(Color.BLACK);
+        blankText = new TextView(this);
+        blankText.setTextColor(0x55FFFFFF);
+        blankText.setTextSize(16);
+        blankText.setGravity(Gravity.CENTER);
+        cover.addView(blankText, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        cover.setVisibility(View.GONE);
+        blankOverlay = cover;
+        root.addView(cover, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         // On the phone, keep the page clear of the status bar, navigation bar and keyboard.
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -140,7 +175,15 @@ public class MainActivity extends Activity {
         if (isDisplay()) {
             hideSystemBars();
             pinToScreen();
+            startScheduleLoop();
         }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        scheduleHandler.removeCallbacksAndMessages(null);
+        releaseScreenLock();
     }
 
     @Override
@@ -152,6 +195,11 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         lastTouch = SystemClock.uptimeMillis();
+        if (blanked && isDisplay()) {
+            // Off hours: a tap shows the sign for a minute instead of pressing anything.
+            if (ev.getActionMasked() == MotionEvent.ACTION_UP) peek();
+            return true;
+        }
         return super.dispatchTouchEvent(ev);
     }
 
@@ -182,14 +230,19 @@ public class MainActivity extends Activity {
         editing = false;
         idleHandler.removeCallbacksAndMessages(null);
         if (isDisplay()) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+            setShowOverLockScreen(true);
             hideSystemBars();
             pinToScreen();
             loadSign();
+            startScheduleLoop();
         } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            scheduleHandler.removeCallbacksAndMessages(null);
+            cancelWakeAlarm();
+            setBlank(false);
+            setKeepScreenOn(false);
+            setShowOverLockScreen(false);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             unpin();
@@ -211,6 +264,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (mode() == null) return;
+        if (blanked) { peek(); return; }
         if (editing) {
             // Tablet editor: Back returns to the sign.
             loadSign();
@@ -288,6 +342,7 @@ public class MainActivity extends Activity {
         String[] items = {
                 "Back to the sign",
                 "Edit the status",
+                "Screen schedule",
                 "Reload the sign",
                 "Change sign address",
                 "Use this device as my phone instead",
@@ -298,10 +353,11 @@ public class MainActivity extends Activity {
                 .setItems(items, (d, which) -> {
                     switch (which) {
                         case 1: loadEditor(); break;
-                        case 2: loadSign(); break;
-                        case 3: askForUrl(); break;
-                        case 4: switchMode(MODE_REMOTE); break;
-                        case 5: exitKiosk(); break;
+                        case 2: handler.post(this::showScheduleDialog); break;
+                        case 3: loadSign(); break;
+                        case 4: askForUrl(); break;
+                        case 5: switchMode(MODE_REMOTE); break;
+                        case 6: exitKiosk(); break;
                         default: break;
                     }
                 })
@@ -365,6 +421,10 @@ public class MainActivity extends Activity {
     }
 
     private void exitKiosk() {
+        scheduleHandler.removeCallbacksAndMessages(null);
+        cancelWakeAlarm();
+        setBlank(false);
+        setKeepScreenOn(false);
         unpin();
         Toast.makeText(this, "Door Sign closed. Open it again to lock the tablet.", Toast.LENGTH_LONG).show();
         finishAndRemoveTask();
@@ -489,10 +549,220 @@ public class MainActivity extends Activity {
         }
     }
 
+    /* ---------------- Screen schedule ---------------- */
+
+    private Schedule schedule() { return Schedule.load(prefs); }
+
+    private void startScheduleLoop() {
+        scheduleHandler.removeCallbacksAndMessages(null);
+        scheduleHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                evaluateSchedule();
+                scheduleHandler.postDelayed(this, 20_000);
+            }
+        });
+    }
+
+    /** Turns the screen on or blanks it according to the schedule. */
+    private void evaluateSchedule() {
+        if (!isDisplay()) return;
+        long now = System.currentTimeMillis();
+        Schedule sc = schedule();
+        boolean on = sc.isOnAt(now) || editing || SystemClock.uptimeMillis() < peekUntil;
+        if (on) {
+            setBlank(false);
+            setKeepScreenOn(true);
+        } else {
+            setBlank(true);
+            setKeepScreenOn(false);
+            long next = sc.nextChange(now);
+            blankText.setText(next > 0
+                    ? "Screen off until " + describe(next) + "\nTap to show the sign"
+                    : "Screen off\nTap to show the sign");
+        }
+        // Always keep an alarm set for the next "on" moment, so the screen wakes even if it went to sleep.
+        long nextOn = -1;
+        if (sc.enabled) {
+            long t = now;
+            for (int i = 0; i < 4; i++) {
+                long c = sc.nextChange(t);
+                if (c < 0) break;
+                if (sc.isOnAt(c)) { nextOn = c; break; }
+                t = c;
+            }
+        }
+        if (nextOn > 0) setWakeAlarm(nextOn); else cancelWakeAlarm();
+    }
+
+    private void peek() {
+        peekUntil = SystemClock.uptimeMillis() + PEEK_MS;
+        evaluateSchedule();
+    }
+
+    private void setBlank(boolean blank) {
+        if (blankOverlay == null) return;
+        blanked = blank;
+        blankOverlay.setVisibility(blank ? View.VISIBLE : View.GONE);
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = blank ? 0.0f : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+    }
+
+    /** Keeps the screen awake while the sign is showing; when false, the tablet's own timeout turns it off. */
+    @SuppressWarnings("deprecation")
+    private void setKeepScreenOn(boolean keep) {
+        if (keep) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (root != null) root.setKeepScreenOn(true);
+            if (screenLock == null) {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    screenLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "DoorSign:signOn");
+                    screenLock.setReferenceCounted(false);
+                }
+            }
+            if (screenLock != null && !screenLock.isHeld()) {
+                try { screenLock.acquire(); } catch (Exception ignored) { }
+            }
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (root != null) root.setKeepScreenOn(false);
+            releaseScreenLock();
+        }
+    }
+
+    private void releaseScreenLock() {
+        if (screenLock != null && screenLock.isHeld()) {
+            try { screenLock.release(); } catch (Exception ignored) { }
+        }
+    }
+
+    /** Lets the sign appear over the lock screen and turn the screen on when it wakes. */
+    @SuppressWarnings("deprecation")
+    private void setShowOverLockScreen(boolean show) {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(show);
+            setTurnScreenOn(show);
+        } else {
+            int f = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            if (show) getWindow().addFlags(f); else getWindow().clearFlags(f);
+        }
+    }
+
+    private PendingIntent wakeIntent() {
+        Intent i = new Intent(this, ScreenOnReceiver.class);
+        return PendingIntent.getBroadcast(this, 1, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private void setWakeAlarm(long at) {
+        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, wakeIntent());
+            } else {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, wakeIntent());
+            }
+        } catch (Exception e) {
+            try { am.set(AlarmManager.RTC_WAKEUP, at, wakeIntent()); } catch (Exception ignored) { }
+        }
+    }
+
+    private void cancelWakeAlarm() {
+        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (am != null) am.cancel(wakeIntent());
+    }
+
+    private String describe(long timeMs) {
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(timeMs);
+        String time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(c.getTime());
+        boolean sameDay = now.get(java.util.Calendar.YEAR) == c.get(java.util.Calendar.YEAR)
+                && now.get(java.util.Calendar.DAY_OF_YEAR) == c.get(java.util.Calendar.DAY_OF_YEAR);
+        if (sameDay) return time;
+        String day = c.getDisplayName(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.LONG, java.util.Locale.getDefault());
+        return day + " " + time;
+    }
+
+    private String fmtMinutes(int minutes) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, minutes / 60);
+        c.set(java.util.Calendar.MINUTE, minutes % 60);
+        return java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(c.getTime());
+    }
+
+    private void showScheduleDialog() {
+        if (isFinishing()) return;
+        dismissDialog();
+        Schedule cur = schedule();
+        final boolean[] enabled = {cur.enabled};
+        final int[] onMin = {cur.onMin};
+        final int[] offMin = {cur.offMin};
+        final boolean[] weekendOff = {cur.weekendOff};
+
+        int pad = (int) (20 * getResources().getDisplayMetrics().density);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, 0);
+
+        Switch useSchedule = new Switch(this);
+        useSchedule.setText("Turn the screen off outside working hours");
+        useSchedule.setChecked(enabled[0]);
+        box.addView(useSchedule);
+
+        Button onBtn = new Button(this);
+        Button offBtn = new Button(this);
+        CheckBox weekend = new CheckBox(this);
+        weekend.setText("Keep the screen off all weekend (Saturday and Sunday)");
+        weekend.setChecked(weekendOff[0]);
+
+        Runnable refresh = () -> {
+            onBtn.setText("Turns on at " + fmtMinutes(onMin[0]));
+            offBtn.setText("Turns off at " + fmtMinutes(offMin[0]));
+            onBtn.setEnabled(enabled[0]);
+            offBtn.setEnabled(enabled[0]);
+            weekend.setEnabled(enabled[0]);
+        };
+        refresh.run();
+        useSchedule.setOnCheckedChangeListener((b, checked) -> { enabled[0] = checked; refresh.run(); });
+        weekend.setOnCheckedChangeListener((b, checked) -> weekendOff[0] = checked);
+
+        boolean h24 = android.text.format.DateFormat.is24HourFormat(this);
+        onBtn.setOnClickListener(v -> new TimePickerDialog(this, (tp, h, m) -> { onMin[0] = h * 60 + m; refresh.run(); },
+                onMin[0] / 60, onMin[0] % 60, h24).show());
+        offBtn.setOnClickListener(v -> new TimePickerDialog(this, (tp, h, m) -> { offMin[0] = h * 60 + m; refresh.run(); },
+                offMin[0] / 60, offMin[0] % 60, h24).show());
+
+        box.addView(onBtn);
+        box.addView(offBtn);
+        box.addView(weekend);
+
+        openDialog = new AlertDialog.Builder(this)
+                .setTitle("Screen schedule")
+                .setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    new Schedule(enabled[0], onMin[0], offMin[0], weekendOff[0]).save(prefs);
+                    peekUntil = 0;
+                    evaluateSchedule();
+                    String msg = !enabled[0] ? "The screen will stay on all the time."
+                            : "Schedule saved: on " + fmtMinutes(onMin[0]) + ", off " + fmtMinutes(offMin[0])
+                              + (weekendOff[0] ? ", off on weekends." : ".");
+                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .setOnDismissListener(d -> { if (isDisplay()) hideSystemBars(); })
+                .show();
+    }
+
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         idleHandler.removeCallbacksAndMessages(null);
+        scheduleHandler.removeCallbacksAndMessages(null);
+        releaseScreenLock();
         dismissDialog();
         if (web != null) web.destroy();
         super.onDestroy();

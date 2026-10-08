@@ -16,6 +16,7 @@ An always-on status sign for an office door tablet, updated from any phone or co
 - Edit the sign: open `https://rimonsoli.github.io/door-sign/edit.html` and sign in.
 - Edit from the tablet: press Back, enter the lock code, choose **Edit the status**.
 - Change a device's type: tablet menu → **Use this device as my phone instead**, or on the phone **App settings** → **Use this device as the door tablet**.
+- Screen schedule (tablet): press Back, enter the code, choose **Screen schedule**. Set the on and off times and whether the screen stays off on weekends. Outside those hours the screen goes black and the tablet is allowed to sleep; tap it to show the sign for a minute.
 - Leave the tablet app: press Back, enter the 4-digit lock code, then choose **Exit and unlock the tablet**.
 - If the tablet has no internet and a lock code is set, Back does nothing. Hold **Back** and **Recents** together and enter the tablet's own PIN to unpin it.
 
