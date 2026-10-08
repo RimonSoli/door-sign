@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Door Sign</string>
     <!-- The address of the sign page. You can also change it from the app's menu. -->
-    <string name="default_sign_url">https://GITHUB_USERNAME.github.io/door-sign/</string>
+    <string name="default_sign_url">https://rimonsoli.github.io/door-sign/</string>
 </resources>

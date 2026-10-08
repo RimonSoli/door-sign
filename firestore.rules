@@ -7,7 +7,7 @@ service cloud.firestore {
       allow read: if docId in ['current', 'settings'];
       allow write: if docId in ['current', 'settings']
                    && request.auth != null
-                   && request.auth.token.email.lower() == 'OWNER_EMAIL'
+                   && request.auth.token.email.lower() == 'rimon.prop@gmail.com'
                    && request.resource.size() < 20;
     }
     // Everything else is closed.
