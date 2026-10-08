@@ -88,7 +88,7 @@ input[type=color]{width:42px;height:32px;border:1px solid var(--line);border-rad
   <div id="editor" hidden>
     <div class="top">
       <h1>Door Sign</h1>
-      <div class="who"><span id="whoText"></span><a class="linkbtn" href="index.html">Open sign view</a><button type="button" class="linkbtn" id="logout">Sign out</button></div>
+      <div class="who"><span id="whoText"></span><a class="linkbtn" href="index.html" id="signLink">Open sign view</a><button type="button" class="btn" id="appBtn" hidden></button><button type="button" class="linkbtn" id="logout">Sign out</button></div>
     </div>
     <div class="grid">
       <div class="preview-wrap">
@@ -186,6 +186,18 @@ import { app, statusRef, settingsRef, FONTS, DEFAULT_STATUS, paint, esc, hashPin
 
 const $ = id => document.getElementById(id);
 const auth = getAuth(app);
+
+/* Inside the Door Sign Android app, the app adds window.DoorSignApp. */
+const appBridge = typeof window.DoorSignApp !== "undefined" ? window.DoorSignApp : null;
+let appMode = "";
+try { appMode = appBridge ? String(appBridge.mode()) : ""; } catch (e) {}
+const inTablet = appMode === "display", inPhone = appMode === "remote";
+if (appBridge) {
+  $("signLink").hidden = true;
+  const b = $("appBtn"); b.hidden = false;
+  b.textContent = inTablet ? "Back to sign" : "App settings";
+  b.onclick = () => { try { inTablet ? appBridge.doneEditing() : appBridge.openMenu(); } catch (e) {} };
+}
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 
 const PRESETS = [
@@ -288,7 +300,7 @@ async function save() {
     photo: draft.photo || null, updatedAt: new Date().toISOString()
   };
   $("save").disabled = true; $("saveMsg").className = "msg"; $("saveMsg").textContent = "Updating…";
-  try { await setDoc(statusRef, body); dirty = false; draft = { ...body }; $("saveMsg").textContent = "Sign updated."; }
+  try { await setDoc(statusRef, body); dirty = false; draft = { ...body }; $("saveMsg").textContent = inTablet ? "Sign updated. Returning to the sign…" : "Sign updated."; if (appBridge) { try { appBridge.saved(); } catch (e) {} } }
   catch (err) {
     $("saveMsg").className = "msg err";
     $("saveMsg").textContent = err && err.code === "permission-denied"
