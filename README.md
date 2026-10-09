@@ -14,6 +14,9 @@ An always-on status sign for an office door tablet, updated from any phone or co
 ## Using it
 
 - Edit the sign: open `https://rimonsoli.github.io/door-sign/edit.html` and sign in.
+- Preview border: red means your changes aren't on the sign yet; green means they were just sent.
+- Gradients: in Colors, pick a gradient swatch or tick **Gradient** and choose the second color.
+- Automatic schedule: in the editor, pick a status and either daily times (with days) or a date range. While the time is running the sign shows that status, then goes back to the last status sent with Update sign. Date ranges win over daily times, and an Update sign during a scheduled time overrides it until that time ends.
 - Edit from the tablet: press Back, enter the lock code, choose **Edit the status**.
 - Change a device's type: tablet menu → **Use this device as my phone instead**, or on the phone **App settings** → **Use this device as the door tablet**.
 - Screen schedule (tablet): press Back, enter the code, choose **Screen schedule**. Set the on and off times and whether the screen stays off on weekends. Outside those hours the screen goes black and the tablet is allowed to sleep; tap it to show the sign for a minute.

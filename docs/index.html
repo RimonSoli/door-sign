@@ -42,19 +42,24 @@ html,body{overflow:hidden;background:#111}
 
 <script type="module">
 import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { statusRef, settingsRef, paint, DEFAULT_STATUS, hashPin } from "./sign-core.js";
+import { statusRef, settingsRef, paint, DEFAULT_STATUS, hashPin, effectiveStatus } from "./sign-core.js";
 
 const $ = id => document.getElementById(id);
 // Inside the tablet app, the app provides window.DoorSignApp and handles fullscreen itself.
 const inApp = typeof window.DoorSignApp !== "undefined";
-let status = { ...DEFAULT_STATUS }, pinHash = null;
+let status = { ...DEFAULT_STATUS }, settings = {}, pinHash = null;
 
-function draw() { paint($("sign"), status); $("clock").style.setProperty("--s-fg", status.fg || "#fff"); }
+// Shows the manual status, or a scheduled one while its time window is running.
+function draw() {
+  const shown = effectiveStatus(status, settings, new Date()).status;
+  paint($("sign"), shown);
+  $("clock").style.setProperty("--s-fg", shown.fg || "#fff");
+}
 function tick() { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 // Wait for the real status before drawing, so the sign never flashes a placeholder first.
 let loaded = false;
 tick(); setInterval(tick, 15000);
-setInterval(() => { if (loaded) draw(); }, 60000); // only refreshes the "Updated …" line
+setInterval(() => { if (loaded) draw(); }, 15000); // checks schedules; otherwise only refreshes the "Updated …" line
 
 onSnapshot(statusRef, snap => {
   status = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : { ...DEFAULT_STATUS };
@@ -62,7 +67,9 @@ onSnapshot(statusRef, snap => {
 }, () => { $("note").textContent = "Can't reach the status. Retrying…"; $("note").hidden = false; });
 
 onSnapshot(settingsRef, snap => {
-  pinHash = (snap.exists() && snap.data().pinHash) || null;
+  settings = snap.exists() ? snap.data() : {};
+  pinHash = settings.pinHash || null;
+  if (loaded) draw();
   if (inApp) { try { window.DoorSignApp.setLocked(!!pinHash); } catch (e) {} }
   updateButtons();
 }, () => {});
