@@ -6,9 +6,7 @@
   --radius:10px;
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root{
-  --bg:#141714; --surface:#1d211e; --fg:#e8ebe6; --muted:#9aa39b; --line:#323832;
-  --accent:#6fc196; --accent-fg:#0d1a12; --danger:#e07a6b; color-scheme:dark}}
+/* The editor always uses these light colors, even when the device is in dark mode. */
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:15px;line-height:1.45}
