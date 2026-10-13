@@ -34,8 +34,22 @@ legend{padding:0;margin-bottom:8px}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;cursor:pointer;display:flex;gap:6px;align-items:center}
 .chip:hover{border-color:var(--accent)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.status-list{display:flex;flex-wrap:wrap;gap:8px}
+/* Statuses: a 2-across grid of mini signs */
+.status-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .status-list:empty{display:none}
+.thumb-wrap{position:relative;min-width:0}
+.thumb{display:flex;width:100%;aspect-ratio:16/10;border:0;padding:0;margin:0;border-radius:10px;cursor:pointer;
+  box-shadow:0 0 0 1px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.12);font:inherit;transition:box-shadow .15s,transform .15s}
+.thumb:hover{transform:translateY(-1px)}
+.thumb[aria-pressed="true"]{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--accent),0 2px 8px rgba(0,0,0,.12)}
+.thumb .s-sub{display:none}
+.thumb .s-text{font-size:clamp(.85rem,12cqi,2.4rem);max-width:90%}
+.thumb .s-emoji{font-size:clamp(1.1rem,17cqi,3.4rem)}
+.thumb-x{position:absolute;top:-8px;right:-8px;z-index:2;min-width:28px;height:28px;padding:0 8px;border-radius:999px;border:1px solid var(--line);
+  background:var(--surface);color:var(--muted);font-size:1rem;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.thumb-x:hover{color:var(--danger);border-color:var(--danger)}
+.thumb-x.confirm{background:var(--danger);color:#fff;border-color:var(--danger);font-size:.8rem;font-weight:700}
+.swb{width:46px;height:34px;border-radius:8px;border:1px solid var(--line);box-shadow:inset 0 0 0 2px var(--surface);padding:0;cursor:pointer;flex:none}
 .list-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:4px}
 .list-tools .sub-tag{margin-top:0}
 .chip-wrap{display:inline-flex;align-items:stretch}
@@ -54,9 +68,6 @@ input[type=text],input[type=email],input[type=password]{background:var(--surface
 .emojis button[aria-pressed="true"],.fonts button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
 .fonts{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
 .fonts button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px;font-size:1.25rem;cursor:pointer;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.themes{display:flex;flex-wrap:wrap;gap:8px}
-.themes button{width:46px;height:46px;border-radius:10px;border:2px solid var(--line);cursor:pointer;font-weight:800;font-size:1rem;display:grid;place-items:center}
-.themes button[aria-pressed="true"]{border-color:var(--fg);transform:scale(1.06)}
 .custom{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
 .custom label{display:flex;align-items:center;gap:8px}
 .custom label.off{opacity:.45}
@@ -181,12 +192,11 @@ select,input[type=time],input[type=date]{background:var(--surface);border:1px so
 
         <fieldset>
           <legend class="tag">Colors</legend>
-          <div class="themes" id="themes"></div>
           <div class="custom">
-            <label for="bgColor">Background <input type="color" id="bgColor"></label>
+            <label>Background <button type="button" class="swb" id="bgSw" aria-label="Background color. Tap to change."></button></label>
             <label for="gradOn"><input type="checkbox" id="gradOn"> Gradient</label>
-            <label for="bg2Color" id="bg2Label">Blends into <input type="color" id="bg2Color"></label>
-            <label for="fgColor">Text <input type="color" id="fgColor"></label>
+            <label id="bg2Label">Blends into <button type="button" class="swb" id="bg2Sw" aria-label="Second gradient color. Tap to change."></button></label>
+            <label>Text <button type="button" class="swb" id="fgSw" aria-label="Text color. Tap to change."></button></label>
           </div>
         </fieldset>
 
@@ -255,6 +265,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPe
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { onSnapshot, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { app, statusRef, settingsRef, FONTS, DEFAULT_STATUS, paint, esc, hashPin, safeColor, effectiveStatus, activeWindow } from "./sign-core.js";
+import { createColorPicker } from "./color-picker.js";
 
 const $ = id => document.getElementById(id);
 const auth = getAuth(app);
@@ -283,10 +294,6 @@ const PRESETS = [
   { text: "Gone for the day", sub: "See you tomorrow", emoji: "🌙", font: "fraunces", bg: "#24324a", fg: "#f3e6c4" }
 ];
 const EMOJIS = ["👋","🤝","🥪","☕","🚻","🏖️","✈️","📞","💻","🎧","🔕","⏰","🌙","🤒","🏃","🚗","🎉","📚","🙏","⛔","✅","❤️","🍕","😊"];
-// [background, text, optional second background for a gradient]
-const THEMES = [["#2f6b4f","#ffffff"],["#b23a2e","#ffffff"],["#f2b544","#2a1d05"],["#2b4f8f","#ffffff"],["#1fa3a8","#ffffff"],["#5b3d8a","#ffffff"],["#1d1d1f","#f5f5f2"],["#f4f1e8","#1d1d1f"],["#e86a92","#ffffff"],["#24324a","#f3e6c4"],
-  ["#ff8a1f","#ffffff","#f2307e"],["#1fa3a8","#ffffff","#2b4f8f"],["#3fa37a","#ffffff","#1d4f3a"],["#5b3d8a","#ffffff","#e86a92"],["#24324a","#f3e6c4","#5b3d8a"],["#f7d774","#2a1d05","#f29a5b"]];
-const bgCss = (bg, bg2) => bg2 ? `linear-gradient(180deg, ${bg}, ${bg2})` : bg;
 
 let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
 /* One list of statuses, all editable. activeId = the status being edited (null = a new one). */
@@ -321,6 +328,8 @@ onAuthStateChanged(auth, user => {
     }
     if (activeId && !statuses.some(p => p.id === activeId)) activeId = null;
     schedules = Array.isArray(d.schedules) ? d.schedules.filter(x => x && typeof x.id === "string") : [];
+    palette = Array.isArray(d.palette) ? d.palette.filter(c => typeof c === "string") : [];
+    picker.refresh();
     drawStatuses(); drawSchedules(); render();
   }, () => {}));
 });
@@ -341,17 +350,32 @@ $("logout").onclick = () => signOut(auth);
 /* ---------- Controls ---------- */
 $("emojis").innerHTML = `<button type="button" data-e="" aria-pressed="false" title="No emoji" style="font-size:.85rem">None</button>` + EMOJIS.map(e => `<button type="button" data-e="${e}" aria-pressed="false">${e}</button>`).join("");
 $("fonts").innerHTML = Object.entries(FONTS).map(([k, f]) => `<button type="button" data-f="${k}" aria-pressed="false" style="font-family:${esc(f.css)};font-weight:${f.w}">${f.name}</button>`).join("");
-$("themes").innerHTML = THEMES.map(([b, f, b2], i) => `<button type="button" data-t="${i}" aria-pressed="false" style="background:${bgCss(b, b2)};color:${f}" aria-label="${b2 ? "Gradient" : "Color"} theme ${i + 1}">Aa</button>`).join("");
 
 $("emojis").onclick = e => { const b = e.target.closest("[data-e]"); if (!b) return; draft.emoji = b.dataset.e; $("emojiCustom").value = ""; changed(true); };
 $("fonts").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; draft.font = b.dataset.f; changed(true); };
-$("themes").onclick = e => { const b = e.target.closest("[data-t]"); if (!b) return; const [bg, fg, bg2] = THEMES[b.dataset.t]; Object.assign(draft, { bg, fg, bg2: bg2 || "" }); changed(true); };
 $("text").oninput = e => { draft.text = e.target.value; changed(false); };
 $("sub").oninput = e => { draft.sub = e.target.value; changed(false); };
 $("emojiCustom").oninput = e => { draft.emoji = e.target.value.trim(); changed(false); };
-$("bgColor").oninput = e => { draft.bg = e.target.value; changed(false); };
-$("gradOn").onchange = e => { draft.bg2 = e.target.checked ? ($("bg2Color").value || shade(draft.bg)) : ""; if (e.target.checked && !safeColor($("bg2Color").value)) $("bg2Color").value = draft.bg2; changed(true); };
-$("bg2Color").oninput = e => { draft.bg2 = e.target.value; $("gradOn").checked = true; changed(false); };
+/* Colors use the shared colour picker (same one as the Financial Tracker).
+   Saved colours live in settings.palette, so they follow you to every device. */
+let palette = [], lastBg2 = "";
+const picker = createColorPicker({
+  getPalette: () => palette,
+  setPalette: async list => {
+    palette = list; picker.refresh();
+    try { await setDoc(settingsRef, { palette: list, updatedAt: new Date().toISOString() }, { merge: true }); }
+    catch (e) { $("presetMsg").className = "msg err"; $("presetMsg").textContent = "Couldn't save your colours. Check your connection and try again."; }
+  },
+  emptyText: "Colours you save appear here, ready to reuse for any background, gradient or text."
+});
+$("bgSw").onclick = () => picker.open(draft.bg, hex => { draft.bg = hex; changed(true); });
+$("bg2Sw").onclick = () => picker.open(safeColor(draft.bg2) || lastBg2 || shade(draft.bg), hex => { draft.bg2 = hex; lastBg2 = hex; changed(true); });
+$("fgSw").onclick = () => picker.open(draft.fg, hex => { draft.fg = hex; changed(true); });
+$("gradOn").onchange = e => {
+  if (e.target.checked) draft.bg2 = lastBg2 || shade(draft.bg);
+  else { if (safeColor(draft.bg2)) lastBg2 = draft.bg2; draft.bg2 = ""; }
+  changed(true);
+};
 /** A darker version of a color, used as the starting second color for a gradient. */
 function shade(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#1d1d1f";
@@ -359,19 +383,13 @@ function shade(hex) {
   const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => Math.round(v * k).toString(16).padStart(2, "0"));
   return "#" + c.join("");
 }
-$("fgColor").oninput = e => { draft.fg = e.target.value; changed(false); };
 $("form").onsubmit = e => { e.preventDefault(); save(); };
 $("photoInput").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) addPhoto(f); };
 $("photoRemove").onclick = () => { draft.photo = null; changed(true); };
 
 function syncForm() {
   $("text").value = draft.text || ""; $("sub").value = draft.sub || "";
-  $("bgColor").value = /^#[0-9a-f]{6}$/i.test(draft.bg) ? draft.bg : "#2f6b4f";
-  $("fgColor").value = /^#[0-9a-f]{6}$/i.test(draft.fg) ? draft.fg : "#ffffff";
-  const g = /^#[0-9a-f]{6}$/i.test(draft.bg2 || "");
-  $("gradOn").checked = g;
-  if (g) $("bg2Color").value = draft.bg2;
-  else if (!/^#[0-9a-f]{6}$/i.test($("bg2Color").value) || $("bg2Color").value === "#000000") $("bg2Color").value = shade(draft.bg);
+  $("gradOn").checked = !!safeColor(draft.bg2);
   const inGrid = draft.emoji === "" || EMOJIS.includes(draft.emoji);
   if (!inGrid && document.activeElement !== $("emojiCustom")) $("emojiCustom").value = draft.emoji || "";
 }
@@ -387,7 +405,9 @@ function render() {
   $("editingTag").textContent = editingThis ? `Editing "${editingThis.text}"` : (newMode ? "Making a new status" : "");
   document.querySelectorAll("#emojis [data-e]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.e === (draft.emoji || ""))));
   document.querySelectorAll("#fonts [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === draft.font)));
-  document.querySelectorAll("#themes [data-t]").forEach(b => { const [t, f, t2] = THEMES[b.dataset.t]; b.setAttribute("aria-pressed", String(t === draft.bg && f === draft.fg && (t2 || "") === (draft.bg2 || ""))); });
+  $("bgSw").style.background = safeColor(draft.bg) || "#2f6b4f";
+  $("fgSw").style.background = safeColor(draft.fg) || "#ffffff";
+  $("bg2Sw").style.background = safeColor(draft.bg2) || lastBg2 || shade(draft.bg);
   $("bg2Label").classList.toggle("off", !$("gradOn").checked);
   const th = $("photoThumb");
   if (draft.photo) { th.src = draft.photo; th.hidden = false; $("photoRemove").hidden = false; $("photoPick").textContent = "Change photo"; }
@@ -493,14 +513,16 @@ function startingList(saved) {
 
 function drawStatuses() {
   $("listEmpty").hidden = statuses.length > 0;
-  $("statusList").innerHTML = statuses.map(p => {
-    return `<span class="chip-wrap">`
-      + `<button type="button" class="chip" data-p="${esc(p.id)}" aria-pressed="false" title="${esc(p.sub || "")}">`
-      + (p.emoji ? `<span>${esc(p.emoji)}</span>` : "")
-      + `${esc(p.text)}</button>`
-      + `<button type="button" class="chip-x" data-del="${esc(p.id)}" aria-label="Delete ${esc(p.text)}">×</button>`
-      + `</span>`;
-  }).join("");
+  $("statusList").innerHTML = statuses.map(p =>
+    `<div class="thumb-wrap">`
+    + `<button type="button" class="thumb sign" data-p="${esc(p.id)}" aria-pressed="false" aria-label="${esc(p.text + (p.sub ? ", " + p.sub : ""))}"></button>`
+    + `<button type="button" class="thumb-x" data-del="${esc(p.id)}" aria-label="Delete ${esc(p.text)}">×</button>`
+    + `</div>`).join("");
+  // Each thumbnail is a small copy of the real sign, drawn by the same code.
+  document.querySelectorAll("#statusList .thumb").forEach(el => {
+    const p = statuses.find(x => x.id === el.dataset.p);
+    if (p) paint(el, { ...p, photo: null }, { meta: false, animate: false });
+  });
 }
 
 async function writeStatuses(list, okMsg) {
@@ -578,7 +600,7 @@ $("statusList").onclick = async e => {
     const id = del.dataset.del;
     if (pendingDelete !== id) {
       // First tap asks; second tap deletes.
-      document.querySelectorAll("#statusList .chip-x.confirm").forEach(x => { x.classList.remove("confirm"); x.textContent = "×"; });
+      document.querySelectorAll("#statusList .thumb-x.confirm").forEach(x => { x.classList.remove("confirm"); x.textContent = "×"; });
       pendingDelete = id; del.classList.add("confirm"); del.textContent = "Delete?";
       clearTimeout(pendingTimer);
       pendingTimer = setTimeout(() => { pendingDelete = null; del.classList.remove("confirm"); del.textContent = "×"; }, 4000);

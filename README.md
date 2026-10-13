@@ -15,7 +15,8 @@ An always-on status sign for an office door tablet, updated from any phone or co
 
 - Edit the sign: open `https://rimonsoli.github.io/door-sign/edit.html` and sign in.
 - Preview border: red means your changes aren't on the sign yet; green means they were just sent.
-- Gradients: in Colors, pick a gradient swatch or tick **Gradient** and choose the second color.
+- Statuses show as a 2-across grid of mini signs. Tap one to use or edit it; tap × then **Delete?** to remove it.
+- Colors: tap a color to open the color picker (the same one as the Financial Tracker). It opens on the current color. **Save to palette** keeps a color for later on every device; **Edit** removes saved colors. Tick **Gradient** to blend the background into a second color.
 - Automatic schedule: in the editor, pick a status and either daily times (with days) or a date range. While the time is running the sign shows that status, then goes back to the last status sent with Update sign. Date ranges win over daily times, and an Update sign during a scheduled time overrides it until that time ends.
 - Edit from the tablet: press Back, enter the lock code, choose **Edit the status**.
 - Change a device's type: tablet menu → **Use this device as my phone instead**, or on the phone **App settings** → **Use this device as the door tablet**.
@@ -24,6 +25,8 @@ An always-on status sign for an office door tablet, updated from any phone or co
 - If the tablet has no internet and a lock code is set, Back does nothing. Hold **Back** and **Recents** together and enter the tablet's own PIN to unpin it.
 
 ## Notes
+
+- `docs/color-picker.js` is the shared color picker, ported from the Financial Tracker. Copy it into future apps and call `createColorPicker({ getPalette, setPalette })`, then `picker.open(currentHex, hex => …)`.
 
 - Photos are shrunk in the browser and saved with the status, so Firebase's free plan is enough.
 - The lock code is stored scrambled, but it is a 4-digit code. It keeps passers-by out; it is not bank-grade security.
