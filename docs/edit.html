@@ -45,7 +45,7 @@ legend{padding:0;margin-bottom:8px}
 /* Statuses: a 2-across grid of mini signs */
 .status-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .status-list:empty{display:none}
-.thumb-wrap{position:relative;min-width:0}
+.thumb-wrap{position:relative;min-width:0;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 .thumb{display:flex;width:100%;aspect-ratio:16/10;border:0;padding:0;margin:0;border-radius:10px;cursor:pointer;
   box-shadow:0 0 0 1px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.12);font:inherit;transition:box-shadow .15s,transform .15s}
 .thumb:hover{transform:translateY(-1px)}
@@ -164,6 +164,7 @@ select,input[type=time],input[type=date]{background:var(--surface);border:1px so
       <form class="panel" id="form" autocomplete="off">
         <fieldset>
           <legend class="tag">Statuses</legend>
+          <span class="sub-tag" style="margin-top:-4px">Tap a status to use it. Press and hold to drag it to a new spot.</span>
           <div class="status-list" id="statusList"></div>
           <span class="msg" id="listEmpty" hidden>No statuses yet. Tap Start new status to make one.</span>
           <div class="list-tools">
@@ -272,6 +273,7 @@ select,input[type=time],input[type=date]{background:var(--surface);border:1px so
 import { onSnapshot, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { statusRef, settingsRef, watchAccount, signIn, signOutNow, signInMessage, PRESETS, FONTS, DEFAULT_STATUS, paint, esc, hashPin, safeColor, effectiveStatus, activeWindow } from "./sign-core.js";
 import { createColorPicker } from "./color-picker.js";
+import { makeReorderable } from "./reorder.js";
 
 const $ = id => document.getElementById(id);
 
@@ -505,7 +507,22 @@ function startingList(saved) {
   return list;
 }
 
+// Press and hold a status, then drag it to a new spot. The order is saved to the account,
+// so the desk touchscreen and other devices show it too.
+let redrawLater = false;
+const ro = makeReorderable($("statusList"), {
+  items: ".thumb-wrap", idOf: el => el.querySelector("[data-p]").dataset.p, ignore: ".thumb-x", scroller: window,
+  onDrop: async ids => {
+    const moved = ids.map(id => statuses.find(p => p.id === id)).filter(Boolean);
+    const list = [...moved, ...statuses.filter(p => !ids.includes(p.id))];
+    statuses = list;
+    await writeStatuses(list, "New order saved.");
+    if (redrawLater) { redrawLater = false; drawStatuses(); render(); }
+  }
+});
+
 function drawStatuses() {
+  if (ro.active) { redrawLater = true; return; }   // don't redraw under a finger that's dragging
   $("listEmpty").hidden = statuses.length > 0;
   $("statusList").innerHTML = statuses.map(p =>
     `<div class="thumb-wrap">`

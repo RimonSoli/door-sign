@@ -102,9 +102,24 @@ button{font:inherit}
 import { onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { statusRef, settingsRef, watchAccount, signIn, signOutNow, signInMessage, PRESETS, FONTS,
   DEFAULT_STATUS, paint, esc, safeColor, effectiveStatus, fmtUpdated } from "./sign-core.js";
+import { makeReorderable } from "./reorder.js";
 
 const $ = id => document.getElementById(id);
-let live = null, settings = {}, statuses = [], unsubs = [], seeding = false, sendingId = null;
+let live = null, settings = {}, statuses = [], unsubs = [], seeding = false, sendingId = null, redrawLater = false;
+
+// Press and hold a button, then drag it to a new spot. The order is saved to the account,
+// so the editor and every other screen show it too.
+const ro = makeReorderable($("row"), {
+  items: ".card", idOf: el => el.dataset.p, scroller: $("row"),
+  onDrop: async ids => {
+    const moved = ids.map(id => statuses.find(p => p.id === id)).filter(Boolean);
+    const list = [...moved, ...statuses.filter(p => !ids.includes(p.id))];
+    statuses = list;
+    try { await setDoc(settingsRef, { statuses: list, updatedAt: new Date().toISOString() }, { merge: true }); showToast("✓ New order saved"); }
+    catch (e) { showToast("Couldn't save the new order. Check the internet connection.", true); }
+    if (redrawLater) { redrawLater = false; drawAll(); }
+  }
+});
 
 const LOOK = ["text", "sub", "emoji", "font", "bg", "bg2", "fg"];
 function lookOf(s) {
@@ -163,6 +178,7 @@ function drawNow() {
 }
 
 function drawAll() {
+  if (ro.active) { redrawLater = true; return; }   // don't redraw under a finger that's dragging
   const row = $("row");
   if (!statuses.length) {
     row.innerHTML = `<p class="empty">${live === null && !Object.keys(settings).length ? "Loading your statuses…" : "No statuses yet. Add some in the Door Sign editor on your phone."}</p>`;

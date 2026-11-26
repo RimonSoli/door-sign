@@ -30,7 +30,7 @@ and nobody can see or change anyone else's sign.
 - Edit the sign: open `https://rimonsoli.github.io/door-sign/edit.html` and sign in.
 - Switch the account on a door tablet: tablet menu → **Edit the status** → **Sign out**, then sign in on the sign screen.
 - Preview border: red means your changes aren't on the sign yet; green means they were just sent.
-- Statuses show as a 2-across grid of mini signs. Tap one to use or edit it; tap × then **Delete?** to remove it.
+- Statuses show as a 2-across grid of mini signs. Tap one to use or edit it; tap × then **Delete?** to remove it. Press and hold one, then drag it, to change the order (the desk touchscreen works the same way, and the order is shared).
 - Colors: tap a color to open the color picker (the same one as the Financial Tracker). It opens on the current color. **Save to palette** keeps a color for later on every device; **Edit** removes saved colors. Tick **Gradient** to blend the background into a second color.
 - Automatic schedule: in the editor, pick a status and either daily times (with days) or a date range. While the time is running the sign shows that status, then goes back to the last status sent with Update sign. Date ranges win over daily times, and an Update sign during a scheduled time overrides it until that time ends.
 - Edit from the tablet: press Back, enter the lock code, choose **Edit the status**.
@@ -41,6 +41,7 @@ and nobody can see or change anyone else's sign.
 
 ## Notes
 
+- `docs/reorder.js` is the press-and-hold drag-to-reorder used by the editor and the desk touchscreen.
 - `docs/color-picker.js` is the shared color picker, ported from the Financial Tracker. Copy it into future apps and call `createColorPicker({ getPalette, setPalette })`, then `picker.open(currentHex, hex => …)`.
 
 - Photos are shrunk in the browser and saved with the status, so Firebase's free plan is enough.
