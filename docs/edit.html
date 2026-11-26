@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light only">
+<!-- Saved to an iPhone home screen, the editor opens full screen like an app. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Door Sign">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef0ec">
 <title>Edit Door Sign</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:opsz,wght@9..144,600&family=Caveat:wght@700&family=Bebas+Neue&family=Pacifico&family=Space+Mono:wght@700&family=Archivo+Black&display=swap">
@@ -261,14 +269,11 @@ select,input[type=time],input[type=date]{background:var(--surface);border:1px so
 </main>
 
 <script type="module">
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { onSnapshot, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { app, statusRef, settingsRef, FONTS, DEFAULT_STATUS, paint, esc, hashPin, safeColor, effectiveStatus, activeWindow } from "./sign-core.js";
+import { statusRef, settingsRef, watchAccount, signIn, signOutNow, signInMessage, PRESETS, FONTS, DEFAULT_STATUS, paint, esc, hashPin, safeColor, effectiveStatus, activeWindow } from "./sign-core.js";
 import { createColorPicker } from "./color-picker.js";
 
 const $ = id => document.getElementById(id);
-const auth = getAuth(app);
 
 /* Inside the Door Sign Android app, the app adds window.DoorSignApp. */
 const appBridge = typeof window.DoorSignApp !== "undefined" ? window.DoorSignApp : null;
@@ -281,18 +286,7 @@ if (appBridge) {
   b.textContent = inTablet ? "Back to sign" : "App settings";
   b.onclick = () => { try { inTablet ? appBridge.doneEditing() : appBridge.openMenu(); } catch (e) {} };
 }
-setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-const PRESETS = [
-  { text: "Available", sub: "Come on in", emoji: "👋", font: "bricolage", bg: "#2f6b4f", fg: "#ffffff" },
-  { text: "In a meeting", sub: "Please don't knock", emoji: "🤝", font: "bebas", bg: "#b23a2e", fg: "#ffffff" },
-  { text: "Out for lunch", sub: "Back soon", emoji: "🥪", font: "caveat", bg: "#f2b544", fg: "#2a1d05" },
-  { text: "Be right back", sub: "Bathroom break", emoji: "🚻", font: "bricolage", bg: "#2b4f8f", fg: "#ffffff" },
-  { text: "On vacation", sub: "Back next week", emoji: "🏖️", font: "pacifico", bg: "#1fa3a8", fg: "#ffffff" },
-  { text: "On a call", sub: "Knock if urgent", emoji: "📞", font: "archivo", bg: "#5b3d8a", fg: "#ffffff" },
-  { text: "Do not disturb", sub: "Focus time", emoji: "🎧", font: "archivo", bg: "#1d1d1f", fg: "#f5f5f2" },
-  { text: "Gone for the day", sub: "See you tomorrow", emoji: "🌙", font: "fraunces", bg: "#24324a", fg: "#f3e6c4" }
-];
 const EMOJIS = ["👋","🤝","🥪","☕","🚻","🏖️","✈️","📞","💻","🎧","🔕","⏰","🌙","🤒","🏃","🚗","🎉","📚","🙏","⛔","✅","❤️","🍕","😊"];
 
 let live = null, draft = { ...DEFAULT_STATUS }, dirty = false, pinHash = null, unsubs = [];
@@ -302,9 +296,14 @@ let schedules = [], justSaved = false;
 const MAX_STATUSES = 50;
 
 /* ---------- Sign-in ---------- */
-onAuthStateChanged(auth, user => {
+// Everyone signs in with their own account and only ever sees their own sign.
+watchAccount(user => {
   unsubs.forEach(u => u()); unsubs = [];
+  // Start clean, so nothing from one account shows while another is signing in.
+  live = null; draft = { ...DEFAULT_STATUS }; dirty = false; justSaved = false; pinHash = null;
+  statuses = []; schedules = []; palette = []; activeId = null; newMode = false; touched = false;
   $("loginForm").hidden = !!user; $("editor").hidden = !user;
+  syncForm(); drawStatuses(); drawSchedules(); render();
   if (!user) return;
   $("whoText").textContent = "Signed in as " + (user.email || "you");
   unsubs.push(onSnapshot(statusRef, snap => {
@@ -336,16 +335,11 @@ onAuthStateChanged(auth, user => {
 $("loginForm").onsubmit = async e => {
   e.preventDefault();
   $("loginBtn").disabled = true; $("loginMsg").className = "msg"; $("loginMsg").textContent = "Signing in…";
-  try { await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value); $("loginMsg").textContent = ""; }
-  catch (err) {
-    $("loginMsg").className = "msg err";
-    $("loginMsg").textContent = err && err.code === "auth/too-many-requests"
-      ? "Too many attempts. Wait a few minutes and try again."
-      : "That email and password don't match. Try again.";
-  }
+  try { await signIn($("email").value.trim(), $("password").value); $("loginMsg").textContent = ""; $("password").value = ""; }
+  catch (err) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = signInMessage(err); }
   $("loginBtn").disabled = false;
 };
-$("logout").onclick = () => signOut(auth);
+$("logout").onclick = () => signOutNow();
 
 /* ---------- Controls ---------- */
 $("emojis").innerHTML = `<button type="button" data-e="" aria-pressed="false" title="No emoji" style="font-size:.85rem">None</button>` + EMOJIS.map(e => `<button type="button" data-e="${e}" aria-pressed="false">${e}</button>`).join("");

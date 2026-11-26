@@ -14,6 +14,16 @@ html,body{overflow:hidden;background:#111}
 .ctrl{position:fixed;left:2vmin;top:calc(env(safe-area-inset-top,0px) + 2vmin);display:flex;gap:8px;transition:opacity .4s;z-index:3}
 .ctrl.idle{opacity:0;pointer-events:none}
 .ctrl button{background:rgba(0,0,0,.45);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer}
+/* One-time sign-in, so this screen shows its owner's sign */
+.signin{position:fixed;inset:0;z-index:5;display:grid;place-items:center;padding:16px;background:#1d211e;overflow:auto}
+.signin form{width:min(400px,100%);background:var(--surface);color:var(--fg);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.signin h1{margin:0;font-size:1.4rem}
+.signin p{margin:0;color:var(--muted);font-size:.92rem}
+.signin label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
+.signin input{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;font-size:1rem;color:var(--fg);width:100%}
+.signin button{background:var(--accent);color:var(--accent-fg);border:0;border-radius:var(--radius);padding:13px 16px;font-size:1.05rem;font-weight:600;cursor:pointer}
+.signin button:disabled{opacity:.6}
+.signin .err{color:var(--danger);font-size:.9rem;min-height:1.2em}
 .status-note{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 7vmin);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:6px 12px;border-radius:999px;font-size:.85rem;z-index:2;white-space:nowrap}
 </style>
 </head>
@@ -25,6 +35,17 @@ html,body{overflow:hidden;background:#111}
   <button type="button" id="editBtn">Edit status</button>
 </div>
 <div class="status-note" id="note">Connecting…</div>
+
+<div class="signin" id="signin" hidden>
+  <form id="signinForm" autocomplete="on">
+    <h1>Set up this door sign</h1>
+    <p>Sign in with the account of the person whose sign this is. You only need to do this once.</p>
+    <label for="email">Email<input type="email" id="email" autocomplete="username" required></label>
+    <label for="password">Password<input type="password" id="password" autocomplete="current-password" required></label>
+    <button type="submit" id="signinBtn">Show my sign</button>
+    <span class="err" id="signinMsg" role="status"></span>
+  </form>
+</div>
 
 <div class="pad" id="pad" hidden>
   <div class="pad-box" id="padBox" role="dialog" aria-modal="true" aria-labelledby="padTitle">
@@ -42,7 +63,7 @@ html,body{overflow:hidden;background:#111}
 
 <script type="module">
 import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { statusRef, settingsRef, paint, DEFAULT_STATUS, hashPin, effectiveStatus } from "./sign-core.js";
+import { statusRef, settingsRef, watchAccount, signIn, signInMessage, paint, DEFAULT_STATUS, hashPin, effectiveStatus } from "./sign-core.js";
 
 const $ = id => document.getElementById(id);
 // Inside the tablet app, the app provides window.DoorSignApp and handles fullscreen itself.
@@ -61,18 +82,37 @@ let loaded = false;
 tick(); setInterval(tick, 15000);
 setInterval(() => { if (loaded) draw(); }, 15000); // checks schedules; otherwise only refreshes the "Updated …" line
 
-onSnapshot(statusRef, snap => {
-  status = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : { ...DEFAULT_STATUS };
-  loaded = true; $("note").hidden = true; draw();
-}, () => { $("note").textContent = "Can't reach the status. Retrying…"; $("note").hidden = false; });
-
-onSnapshot(settingsRef, snap => {
-  settings = snap.exists() ? snap.data() : {};
-  pinHash = settings.pinHash || null;
-  if (loaded) draw();
-  if (inApp) { try { window.DoorSignApp.setLocked(!!pinHash); } catch (e) {} }
-  updateButtons();
-}, () => {});
+/* ---------- Whose sign: the account signed in on this screen ---------- */
+let unsubs = [];
+watchAccount(user => {
+  unsubs.forEach(u => u()); unsubs = [];
+  status = { ...DEFAULT_STATUS }; settings = {}; pinHash = null; loaded = false;
+  $("signin").hidden = !!user;
+  if (!user) {
+    $("note").hidden = true; delete $("sign").dataset.key; $("sign").innerHTML = "";
+    if (inApp) { try { window.DoorSignApp.setLocked(false); } catch (e) {} }
+    updateButtons(); return;
+  }
+  $("note").textContent = "Connecting…"; $("note").hidden = false;
+  unsubs.push(onSnapshot(statusRef, snap => {
+    status = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : { ...DEFAULT_STATUS };
+    loaded = true; $("note").hidden = true; draw();
+  }, () => { $("note").textContent = "Can't reach the sign. Check the internet connection."; $("note").hidden = false; }));
+  unsubs.push(onSnapshot(settingsRef, snap => {
+    settings = snap.exists() ? snap.data() : {};
+    pinHash = settings.pinHash || null;
+    if (loaded) draw();
+    if (inApp) { try { window.DoorSignApp.setLocked(!!pinHash); } catch (e) {} }
+    updateButtons();
+  }, () => {}));
+});
+$("signinForm").onsubmit = async e => {
+  e.preventDefault();
+  $("signinBtn").disabled = true; $("signinMsg").textContent = "";
+  try { await signIn($("email").value.trim(), $("password").value); $("password").value = ""; }
+  catch (err) { $("signinMsg").textContent = signInMessage(err); }
+  $("signinBtn").disabled = false;
+};
 
 /* ---------- Keep the screen awake (browser only; the app does this itself) ---------- */
 let wake = null;
@@ -95,7 +135,7 @@ document.addEventListener("fullscreenchange", updateButtons);
 let idleT = null;
 function poke() { const c = $("ctrl"); c.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(() => c.classList.add("idle"), 4000); keepAwake(); }
 document.addEventListener("pointerdown", e => {
-  if (!$("pad").hidden) return;
+  if (!$("pad").hidden || !$("signin").hidden) return;
   poke();
   if (!inApp && pinHash && !isFs()) enterFs();
 });

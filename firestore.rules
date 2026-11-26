@@ -1,14 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // The door sign: anyone can read it (the tablet needs no login);
-    // only the owner account can change it.
-    match /sign/{docId} {
-      allow read: if docId in ['current', 'settings'];
-      allow write: if docId in ['current', 'settings']
-                   && request.auth != null
-                   && request.auth.token.email.lower() == 'rimon.prop@gmail.com'
+    // Each person's own sign. Only they can read or change it, from any of
+    // their devices (door tablet, desk touchscreen, phone) once signed in.
+    match /users/{uid}/sign/{docId} {
+      allow read: if request.auth != null && request.auth.uid == uid
+                  && docId in ['current', 'settings'];
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && docId in ['current', 'settings']
                    && request.resource.size() < 20;
+    }
+    // The original single sign from before accounts. Only its owner can read it,
+    // once, so it moves into their account. Nobody can change it any more.
+    match /sign/{docId} {
+      allow read: if request.auth != null
+                  && request.auth.token.email.lower() == 'rimon.prop@gmail.com';
+      allow write: if false;
     }
     // Everything else is closed.
     match /{document=**} {

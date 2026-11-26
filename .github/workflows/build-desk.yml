@@ -1,0 +1,47 @@
+# Builds the Windows desk app whenever its code changes, and posts the
+# installer (DoorSignDesk-Setup.exe) on the repository's Releases page.
+name: Build desk app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/build-desk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set the version number
+        working-directory: desktop
+        run: npm version 1.0.${{ github.run_number }} --no-git-tag-version
+
+      - name: Install
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Build the installer
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Publish on the Releases page
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desk-v${{ github.run_number }}
+          name: Door Sign Desk for Windows (build ${{ github.run_number }})
+          body: Download DoorSignDesk-Setup.exe on the Windows PC and open it. It installs, starts on the touchscreen strip, and starts with Windows from then on.
+          files: desktop/dist/DoorSignDesk-Setup.exe
+          make_latest: false

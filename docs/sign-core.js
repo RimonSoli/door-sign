@@ -1,12 +1,62 @@
-// Shared by the tablet sign (index.html) and the editor (edit.html).
+// Shared by the door sign (index.html), the editor (edit.html) and the desk touchscreen (strip.html).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { firebaseConfig } from "./config.js";
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const statusRef = doc(db, "sign", "current");
-export const settingsRef = doc(db, "sign", "settings");
+export const auth = getAuth(app);
+
+/* Each person has their own private sign at users/{their id}/sign/current and .../settings.
+   These two are set when someone signs in (pages that import them see the new values). */
+export let statusRef = null;
+export let settingsRef = null;
+function useAccount(uid) {
+  statusRef = doc(db, "users", uid, "sign", "current");
+  settingsRef = doc(db, "users", uid, "sign", "settings");
+}
+
+/** The original single sign (from before accounts) moves to the owner's account the first time they sign in.
+    For everyone else the old sign can't be read, so nothing is copied. */
+async function moveOldSign() {
+  try {
+    const [mineS, mineC] = await Promise.all([getDoc(settingsRef), getDoc(statusRef)]);
+    if (mineS.exists() || mineC.exists()) return;
+    const [oldS, oldC] = await Promise.all([getDoc(doc(db, "sign", "settings")), getDoc(doc(db, "sign", "current"))]);
+    if (oldS.exists()) await setDoc(settingsRef, oldS.data());
+    if (oldC.exists()) await setDoc(statusRef, oldC.data());
+  } catch (e) { /* not the owner of the old sign, or offline: start fresh */ }
+}
+
+/** Calls onChange(user) whenever someone signs in (after their sign is ready) or out (null). */
+export function watchAccount(onChange) {
+  return onAuthStateChanged(auth, async user => {
+    if (user) { useAccount(user.uid); await moveOldSign(); }
+    else { statusRef = null; settingsRef = null; }
+    onChange(user);
+  });
+}
+export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+export const signOutNow = () => signOut(auth);
+export function signInMessage(err) {
+  const c = err && err.code;
+  if (c === "auth/too-many-requests") return "Too many attempts. Wait a few minutes and try again.";
+  if (c === "auth/network-request-failed") return "No internet connection. Check the Wi-Fi and try again.";
+  return "That email and password don't match. Try again.";
+}
+
+/** The statuses everyone starts with. */
+export const PRESETS = [
+  { text: "Available", sub: "Come on in", emoji: "👋", font: "bricolage", bg: "#2f6b4f", fg: "#ffffff" },
+  { text: "In a meeting", sub: "Please don't knock", emoji: "🤝", font: "bebas", bg: "#b23a2e", fg: "#ffffff" },
+  { text: "Out for lunch", sub: "Back soon", emoji: "🥪", font: "caveat", bg: "#f2b544", fg: "#2a1d05" },
+  { text: "Be right back", sub: "Bathroom break", emoji: "🚻", font: "bricolage", bg: "#2b4f8f", fg: "#ffffff" },
+  { text: "On vacation", sub: "Back next week", emoji: "🏖️", font: "pacifico", bg: "#1fa3a8", fg: "#ffffff" },
+  { text: "On a call", sub: "Knock if urgent", emoji: "📞", font: "archivo", bg: "#5b3d8a", fg: "#ffffff" },
+  { text: "Do not disturb", sub: "Focus time", emoji: "🎧", font: "archivo", bg: "#1d1d1f", fg: "#f5f5f2" },
+  { text: "Gone for the day", sub: "See you tomorrow", emoji: "🌙", font: "fraunces", bg: "#24324a", fg: "#f3e6c4" }
+];
 
 export const FONTS = {
   bricolage: { name: "Bold Sans", css: '"Bricolage Grotesque", system-ui, sans-serif', w: 800 },

@@ -1,0 +1,36 @@
+{
+  "name": "door-sign-desk",
+  "productName": "Door Sign Desk",
+  "version": "1.0.0",
+  "description": "Door Sign controls for the desk touchscreen strip",
+  "author": "Rimon",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.doorsign.desk",
+    "productName": "Door Sign Desk",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "assets/**"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png",
+      "artifactName": "DoorSignDesk-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Door Sign Desk"
+    }
+  }
+}

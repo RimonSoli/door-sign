@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="light only">
+<title>Door Sign Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:opsz,wght@9..144,600&family=Caveat:wght@700&family=Bebas+Neue&family=Pacifico&family=Space+Mono:wght@700&family=Archivo+Black&display=swap">
+<link rel="stylesheet" href="sign.css">
+<style>
+/* Desk touchscreen, built for a 1920×480 strip under the monitor. Sizes use vh so the
+   layout scales with the strip's height at any Windows display scaling.
+   Left: what the door shows now. Right: every status as a big button; swipe for more. */
+html,body{height:100%;overflow:hidden}
+body{display:flex;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-x;font-size:3.4vh}
+button{font:inherit}
+
+.now{flex:0 0 auto;width:96vh;padding:4vh 3.5vh 4vh 4.5vh;display:flex;flex-direction:column;gap:2vh;border-right:1px solid var(--line);background:var(--surface)}
+.now .tag{font-size:2.5vh;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.now .door{width:100%;flex:1 1 auto;min-height:0;border-radius:2.4vh;box-shadow:0 0 0 .6vh #222,0 1vh 3vh rgba(0,0,0,.18);margin-top:.6vh}
+.now .door .s-meta{display:none}
+.now .when{font-size:3vh;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.3em}
+.now .when b{color:var(--fg);font-weight:600}
+
+.rail{position:relative;flex:1 1 auto;min-width:0}
+.row{height:100%;display:flex;gap:2.6vh;padding:4.5vh 4.5vh;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scroll-padding-inline:4.5vh;scrollbar-width:none;
+  overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.row::-webkit-scrollbar{display:none}
+.card{position:relative;flex:0 0 auto;height:100%;aspect-ratio:3/4;scroll-snap-align:start;border:0;padding:0;border-radius:2.6vh;cursor:pointer;
+  box-shadow:0 0 0 1px rgba(0,0,0,.12),0 .8vh 2.4vh rgba(0,0,0,.14);transition:transform .12s,box-shadow .2s}
+.card:active{transform:scale(.97)}
+.card .s-emoji{font-size:clamp(2.2rem,26cqi,9rem)}
+.card .s-text{font-size:clamp(1.2rem,13cqi,4rem);max-width:88%}
+.card .s-sub{font-size:clamp(.8rem,6.2cqi,2rem);max-width:86%}
+.card.on{box-shadow:0 0 0 .7vh var(--bg),0 0 0 1.5vh var(--accent),0 .8vh 2.4vh rgba(0,0,0,.14)}
+.badge{position:absolute;left:50%;bottom:3.4vh;transform:translateX(-50%);z-index:2;white-space:nowrap;
+  background:rgba(255,255,255,.94);color:#1c211d;font-family:var(--ui);font-weight:700;font-size:2.6vh;padding:.8vh 2vh;border-radius:999px;box-shadow:0 .4vh 1.2vh rgba(0,0,0,.2)}
+.card.sending{opacity:.75}
+@keyframes flash{0%{box-shadow:0 0 0 .7vh var(--bg),0 0 0 2.4vh #2e9d5b}100%{box-shadow:0 0 0 .7vh var(--bg),0 0 0 1.5vh var(--accent)}}
+.card.just{animation:flash .9s ease-out}
+
+/* Arrows for mouse users and a fade that shows there's more to swipe to */
+.edge{position:absolute;top:0;bottom:0;width:9vh;pointer-events:none;z-index:3;opacity:0;transition:opacity .2s}
+.edge.l{left:0;background:linear-gradient(90deg,var(--bg),transparent)}
+.edge.r{right:0;background:linear-gradient(270deg,var(--bg),transparent)}
+.edge.show{opacity:1}
+.arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:4;width:8vh;height:8vh;border-radius:50%;border:1px solid var(--line);background:var(--surface);
+  color:var(--fg);font-size:4vh;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 .4vh 1.4vh rgba(0,0,0,.15)}
+.arrow.l{left:1.5vh}.arrow.r{right:1.5vh}
+
+.empty{margin:auto;color:var(--muted);text-align:center;max-width:70ch;padding:0 4vh}
+.toast{position:fixed;right:4vh;top:3vh;z-index:6;background:#1c211d;color:#fff;padding:1.4vh 2.6vh;border-radius:999px;font-weight:600;font-size:2.8vh;opacity:0;transform:translateY(-1vh);transition:opacity .2s,transform .2s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.toast.err{background:var(--danger)}
+
+/* One-time sign-in, laid out across the strip */
+.signin{position:fixed;inset:0;z-index:10;background:var(--bg);display:flex;align-items:center;justify-content:center;gap:5vh;padding:4vh 6vh}
+.signin .intro{max-width:70vh}
+.signin h1{margin:0 0 1.5vh;font-size:6vh;line-height:1.05}
+.signin p{margin:0;color:var(--muted);font-size:3.2vh}
+.signin form{display:flex;align-items:flex-end;gap:2.4vh;flex-wrap:wrap}
+.signin label{display:flex;flex-direction:column;gap:.8vh;font-size:2.8vh;color:var(--muted);font-weight:600}
+.signin input{width:56vh;max-width:40vw;font-size:3.6vh;padding:2vh 2.2vh;border:1px solid var(--line);border-radius:1.6vh;background:var(--surface);color:var(--fg)}
+.signin button{font-size:3.6vh;font-weight:700;padding:2vh 4vh;border:0;border-radius:1.6vh;background:var(--accent);color:var(--accent-fg);cursor:pointer}
+.signin button:disabled{opacity:.6}
+.signin .err{flex-basis:100%;color:var(--danger);font-size:3vh;min-height:1.3em}
+</style>
+</head>
+<body>
+<section class="now" aria-label="On the door now">
+  <span class="tag">On the door now</span>
+  <div class="sign door" id="door"></div>
+  <div class="when" id="when" role="status"></div>
+</section>
+<section class="rail" aria-label="Statuses">
+  <div class="row" id="row"></div>
+  <div class="edge l" id="edgeL"></div><div class="edge r" id="edgeR"></div>
+  <button type="button" class="arrow l" id="arrowL" aria-label="Show earlier statuses" hidden>‹</button>
+  <button type="button" class="arrow r" id="arrowR" aria-label="Show more statuses" hidden>›</button>
+</section>
+<div class="toast" id="toast" role="status"></div>
+
+<div class="signin" id="signin" hidden>
+  <div class="intro">
+    <h1>Door Sign</h1>
+    <p>Sign in with your account to control your door sign from here. You only need to do this once.</p>
+  </div>
+  <form id="signinForm" autocomplete="on">
+    <label for="email">Email<input type="email" id="email" autocomplete="username" required></label>
+    <label for="password">Password<input type="password" id="password" autocomplete="current-password" required></label>
+    <button type="submit" id="signinBtn">Sign in</button>
+    <span class="err" id="signinMsg" role="status"></span>
+  </form>
+</div>
+
+<script type="module">
+import { onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { statusRef, settingsRef, watchAccount, signIn, signOutNow, signInMessage, PRESETS, FONTS,
+  DEFAULT_STATUS, paint, esc, safeColor, effectiveStatus, fmtUpdated } from "./sign-core.js";
+
+const $ = id => document.getElementById(id);
+let live = null, settings = {}, statuses = [], unsubs = [], seeding = false, sendingId = null;
+
+const LOOK = ["text", "sub", "emoji", "font", "bg", "bg2", "fg"];
+function lookOf(s) {
+  return { text: (s.text || "").trim() || "Available", sub: (s.sub || "").trim(), emoji: s.emoji || "",
+    font: FONTS[s.font] ? s.font : "bricolage", bg: s.bg || "#2f6b4f", bg2: safeColor(s.bg2) || "", fg: s.fg || "#ffffff" };
+}
+const sameLook = (a, b) => { const x = lookOf(a), y = lookOf(b); return LOOK.every(k => x[k] === y[k]); };
+
+/* ---------- Account ---------- */
+watchAccount(user => {
+  unsubs.forEach(u => u()); unsubs = [];
+  live = null; settings = {}; statuses = [];
+  $("signin").hidden = !!user;
+  if (!user) { drawAll(); return; }
+  unsubs.push(onSnapshot(statusRef, snap => {
+    live = snap.exists() ? { ...DEFAULT_STATUS, ...snap.data() } : null;
+    drawNow(); markCurrent();
+  }, () => showToast("Can't reach your sign. Check the internet connection.", true)));
+  unsubs.push(onSnapshot(settingsRef, snap => {
+    settings = snap.exists() ? snap.data() : {};
+    if (Array.isArray(settings.statuses)) statuses = settings.statuses.filter(p => p && typeof p.id === "string");
+    else if (!seeding) {
+      // A brand-new account starts with the standard statuses, same as the editor.
+      seeding = true;
+      statuses = PRESETS.map((p, i) => ({ id: "s0" + i + Math.random().toString(36).slice(2, 6), ...lookOf(p) }));
+      setDoc(settingsRef, { statuses, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {}).finally(() => { seeding = false; });
+    }
+    drawAll();
+  }, () => {}));
+});
+$("signinForm").onsubmit = async e => {
+  e.preventDefault();
+  $("signinBtn").disabled = true; $("signinMsg").textContent = "";
+  try { await signIn($("email").value.trim(), $("password").value); $("password").value = ""; }
+  catch (err) { $("signinMsg").textContent = signInMessage(err); }
+  $("signinBtn").disabled = false;
+};
+// The Windows app's tray menu calls these.
+window.doorStrip = { signOut: () => signOutNow() };
+
+/* ---------- Drawing ---------- */
+function shownNow() { return live ? effectiveStatus(live, settings, new Date()) : { status: null, scheduled: null }; }
+
+function drawNow() {
+  const { status, scheduled } = shownNow();
+  const door = $("door");
+  if (!status) { delete door.dataset.key; door.innerHTML = ""; door.style.setProperty("--s-bg", "#d5d9d3"); $("when").textContent = "Nothing sent yet. Tap a status."; return; }
+  paint(door, status, { meta: false, animate: true });
+  if (scheduled) {
+    const t = scheduled.end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const sameDay = scheduled.end.toDateString() === new Date().toDateString();
+    $("when").innerHTML = `<b>Scheduled</b> until ${esc(sameDay ? t : scheduled.end.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + " " + t)}`;
+  } else {
+    $("when").textContent = live && live.updatedAt ? fmtUpdated(live.updatedAt).replace("Updated", "Sent") : "";
+  }
+}
+
+function drawAll() {
+  const row = $("row");
+  if (!statuses.length) {
+    row.innerHTML = `<p class="empty">${live === null && !Object.keys(settings).length ? "Loading your statuses…" : "No statuses yet. Add some in the Door Sign editor on your phone."}</p>`;
+  } else {
+    row.innerHTML = statuses.map(p => `<button type="button" class="card sign" data-p="${esc(p.id)}" aria-label="${esc(p.text + (p.sub ? ", " + p.sub : ""))}"></button>`).join("");
+    row.querySelectorAll(".card").forEach(el => {
+      const p = statuses.find(x => x.id === el.dataset.p);
+      if (p) paint(el, { ...p, photo: null }, { meta: false, animate: false });
+    });
+  }
+  drawNow(); markCurrent(); edges();
+}
+
+/** Rings the button that matches what the door shows. */
+function markCurrent() {
+  const { status } = shownNow();
+  document.querySelectorAll("#row .card").forEach(el => {
+    const p = statuses.find(x => x.id === el.dataset.p);
+    const on = !!(status && p && sameLook(p, status));
+    el.classList.toggle("on", on);
+    el.setAttribute("aria-pressed", String(on));
+    let badge = el.querySelector(".badge");
+    if (on && !badge) el.insertAdjacentHTML("beforeend", `<span class="badge">On the door</span>`);
+    if (!on && badge) badge.remove();
+  });
+}
+
+/* ---------- One tap sends it to the door ---------- */
+$("row").addEventListener("click", async e => {
+  const el = e.target.closest(".card"); if (!el || !statusRef) return;
+  const p = statuses.find(x => x.id === el.dataset.p); if (!p) return;
+  if (sendingId === p.id) return;
+  sendingId = p.id; el.classList.add("sending");
+  const body = { ...lookOf(p), photo: null, updatedAt: new Date().toISOString() };
+  const slow = setTimeout(() => showToast("Waiting for the internet…", true, 0), 5000);
+  try {
+    await setDoc(statusRef, body);
+    clearTimeout(slow);
+    el.classList.remove("just"); void el.offsetWidth; el.classList.add("just");
+    showToast(`✓ ${p.text}`);
+  } catch (err) {
+    clearTimeout(slow);
+    showToast("Couldn't change the sign. Check the internet connection and tap again.", true);
+  } finally { el.classList.remove("sending"); sendingId = null; }
+});
+
+let toastT = null;
+function showToast(msg, err = false, ms = 2200) {
+  const t = $("toast"); t.textContent = msg; t.classList.toggle("err", err); t.classList.add("show");
+  clearTimeout(toastT); if (ms) toastT = setTimeout(() => t.classList.remove("show"), ms);
+}
+
+/* ---------- Scrolling: swipe, mouse wheel, or the arrows ---------- */
+const row = $("row");
+function edges() {
+  const more = row.scrollWidth - row.clientWidth;
+  const atL = row.scrollLeft <= 4, atR = row.scrollLeft >= more - 4;
+  $("edgeL").classList.toggle("show", more > 4 && !atL);
+  $("edgeR").classList.toggle("show", more > 4 && !atR);
+  $("arrowL").hidden = more <= 4 || atL;
+  $("arrowR").hidden = more <= 4 || atR;
+}
+row.addEventListener("scroll", edges, { passive: true });
+addEventListener("resize", edges);
+row.addEventListener("wheel", e => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); row.scrollBy({ left: e.deltaY * 1.5 }); }
+}, { passive: false });
+$("arrowL").onclick = () => row.scrollBy({ left: -row.clientWidth * 0.8, behavior: "smooth" });
+$("arrowR").onclick = () => row.scrollBy({ left: row.clientWidth * 0.8, behavior: "smooth" });
+addEventListener("contextmenu", e => e.preventDefault());
+
+// Schedules start and end on their own, so check every 15 seconds.
+setInterval(() => { if (live) { drawNow(); markCurrent(); } }, 15000);
+drawAll();
+</script>
+</body>
+</html>
