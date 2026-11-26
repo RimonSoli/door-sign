@@ -9,7 +9,7 @@ and nobody can see or change anyone else's sign.
   - `index.html`: the sign the door tablet shows. Signs in once with the owner's account.
   - `edit.html`: the editor (status list, colors, fonts, emoji, photo, schedules, tablet lock code). Saves to an iPhone home screen as an app.
   - `strip.html`: the desk touchscreen page (built for 1920×480). One tap sends a status to the door; swipe for more.
-- **desktop/**: the Windows app **Door Sign Desk**. Shows `strip.html` full screen on the touchscreen strip, starts with Windows, and has a tray menu (choose screen, reload, open the editor, sign out, quit).
+- **desktop/**: the Windows app **Door Sign Desk**. Shows `strip.html` full screen on the touchscreen strip, starts with Windows, sends the mouse back to the main screen if it wanders onto the strip (touch still works), and has a tray menu (choose screen, reload, open the editor, sign out, keep the mouse off, quit).
 - **.github/workflows/build-desk.yml**: builds `DoorSignDesk-Setup.exe` and posts it on the Releases page (tags `desk-v…`).
 - **android/**: the Door Sign app. On first launch it asks whether it's the door tablet or your phone.
   - Tablet: shows the sign full screen, keeps the screen on, pins itself, and sends Back to the lock keypad. The tablet menu (after the code) can open the editor; it returns to the sign after saving, on Back, or after 2 idle minutes.

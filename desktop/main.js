@@ -3,7 +3,7 @@
 // to Windows, and keeps a small tray menu. The page itself comes from the website, so
 // new features reach every desk without reinstalling this app.
 
-const { app, BrowserWindow, screen, Tray, Menu, shell, nativeImage, powerMonitor } = require("electron");
+const { app, BrowserWindow, screen, Tray, Menu, shell, nativeImage, powerMonitor, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -56,6 +56,45 @@ function placeWindow() {
 }
 const placeSoon = () => { clearTimeout(placeTimer); placeTimer = setTimeout(placeWindow, 600); };
 
+/* ---------- Keep the mouse off the touchscreen ----------
+   When the mouse moves onto the strip, it goes straight back to the nearest edge of the
+   main screen. Fingers aren't affected. It can be turned off in the tray menu. */
+let setCursorPos = null;
+function loadCursorMover() {
+  if (process.platform !== "win32") return;
+  try {
+    const koffi = require("koffi");
+    setCursorPos = koffi.load("user32.dll").func("int __stdcall SetCursorPos(int x, int y)");
+  } catch (e) { setCursorPos = null; }
+}
+const keepMouseOff = () => cfg.keepMouseOff !== false;
+let lastPush = 0;
+function pushMouseBack() {
+  if (!setCursorPos || !keepMouseOff() || !win || !win.isVisible()) return;
+  const { display, strip } = pickDisplay();
+  if (!strip) return;
+  const now = Date.now(); if (now - lastPush < 150) return; lastPush = now;
+  const p = screen.getCursorScreenPoint();
+  const b = display.bounds;
+  if (p.x < b.x || p.x >= b.x + b.width || p.y < b.y || p.y >= b.y + b.height) return;
+  // The nearest other screen, and the closest point on it, a little inside its edge.
+  const others = screen.getAllDisplays().filter(d => d.id !== display.id);
+  if (!others.length) return;
+  let best = null;
+  for (const d of others) {
+    const r = d.workArea, m = 40;
+    const x = Math.min(Math.max(p.x, r.x + m), r.x + r.width - m);
+    const y = Math.min(Math.max(p.y, r.y + m), r.y + r.height - m);
+    const dist = (x - p.x) ** 2 + (y - p.y) ** 2;
+    if (!best || dist < best.dist) best = { x, y, dist };
+  }
+  try {
+    const phys = screen.dipToScreenPoint ? screen.dipToScreenPoint({ x: best.x, y: best.y }) : best;
+    setCursorPos(Math.round(phys.x), Math.round(phys.y));
+  } catch (e) { /* leave the mouse where it is */ }
+}
+ipcMain.on("mouse-on-strip", pushMouseBack);
+
 /* ---------- The window ---------- */
 function offlinePage() {
   const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;place-items:center;
@@ -71,7 +110,8 @@ function createWindow() {
     icon: path.join(__dirname, "assets", "icon.png"),
     skipTaskbar: true, autoHideMenuBar: true, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: true,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false }
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false,
+      preload: path.join(__dirname, "preload.js") }
   });
   const wc = win.webContents;
 
@@ -116,6 +156,8 @@ function buildMenu() {
     { label: "Open the full editor", click: () => shell.openExternal(EDITOR_URL) },
     { label: "Sign out of this desk", click: () => win && win.webContents.executeJavaScript("window.doorStrip && window.doorStrip.signOut()").catch(() => {}) },
     { type: "separator" },
+    { label: "Keep the mouse off the touchscreen", type: "checkbox", checked: keepMouseOff(),
+      click: item => { cfg.keepMouseOff = item.checked; saveCfg(); } },
     { label: "Start when I sign in to Windows", type: "checkbox", checked: startsWithWindows(),
       click: item => app.setLoginItemSettings({ openAtLogin: item.checked }) },
     { label: `Version ${app.getVersion()}`, enabled: false },
@@ -134,6 +176,7 @@ function createTray() {
 app.on("second-instance", () => placeWindow());
 app.whenReady().then(() => {
   cfg = loadCfg();
+  loadCursorMover();
   // Start with Windows from the first run; it can be turned off in the tray menu.
   if (!cfg.autoStartSet) { app.setLoginItemSettings({ openAtLogin: true }); cfg.autoStartSet = true; saveCfg(); }
   createWindow();

@@ -17,10 +17,24 @@
   "build": {
     "appId": "com.doorsign.desk",
     "productName": "Door Sign Desk",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "assets/**"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.png",
       "artifactName": "DoorSignDesk-Setup.${ext}"
     },
@@ -31,6 +45,12 @@
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
       "shortcutName": "Door Sign Desk"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ]
+  },
+  "dependencies": {
+    "koffi": "2.9.0"
   }
 }
