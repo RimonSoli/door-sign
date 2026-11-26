@@ -54,37 +54,69 @@ function placeWindow() {
   }
   if (!win.isVisible()) win.show();
 }
-const placeSoon = () => { clearTimeout(placeTimer); placeTimer = setTimeout(placeWindow, 600); };
+const placeSoon = () => { clearTimeout(placeTimer); placeTimer = setTimeout(() => { placeWindow(); applyMouseLimit(); }, 600); };
 
 /* ---------- Keep the mouse off the touchscreen ----------
-   When the mouse moves onto the strip, it goes straight back to the nearest edge of the
-   main screen. Fingers aren't affected. It can be turned off in the tray menu. */
-let setCursorPos = null;
-function loadCursorMover() {
+   Windows is told to keep the mouse inside the other screens (ClipCursor), so it stops at
+   the edge of the main screen just like at any outer edge. Fingers aren't affected: touch
+   doesn't use the mouse pointer. Windows drops this limit after some events (locking the PC,
+   some full-screen apps), so it's set again every second. If the other screens don't make a
+   clean rectangle that leaves the strip out, the mouse is instead moved back to the edge.
+   It can be turned off in the tray menu. */
+let setCursorPos = null, clipCursor = null, clipTimer = null;
+function loadCursorTools() {
   if (process.platform !== "win32") return;
   try {
     const koffi = require("koffi");
-    setCursorPos = koffi.load("user32.dll").func("int __stdcall SetCursorPos(int x, int y)");
-  } catch (e) { setCursorPos = null; }
+    const user32 = koffi.load("user32.dll");
+    koffi.struct("RECT", { left: "int32", top: "int32", right: "int32", bottom: "int32" });
+    setCursorPos = user32.func("int __stdcall SetCursorPos(int x, int y)");
+    clipCursor = user32.func("int __stdcall ClipCursor(const RECT *lpRect)");
+  } catch (e) { setCursorPos = null; clipCursor = null; }
 }
 const keepMouseOff = () => cfg.keepMouseOff !== false;
+const toPhys = r => (screen.dipToScreenRect ? screen.dipToScreenRect(null, r) : r);
+const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/** The rectangle covering every screen except the strip, or null if that rectangle would include the strip. */
+function mouseArea() {
+  const { display, strip } = pickDisplay();
+  if (!strip) return null;
+  const others = screen.getAllDisplays().filter(d => d.id !== display.id);
+  if (!others.length) return null;
+  const x1 = Math.min(...others.map(d => d.bounds.x)), y1 = Math.min(...others.map(d => d.bounds.y));
+  const x2 = Math.max(...others.map(d => d.bounds.x + d.bounds.width)), y2 = Math.max(...others.map(d => d.bounds.y + d.bounds.height));
+  const area = { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  return overlaps(area, display.bounds) ? null : area;
+}
+function applyMouseLimit() {
+  if (!clipCursor) return;
+  const area = keepMouseOff() && win && win.isVisible() ? mouseArea() : null;
+  try {
+    if (!area) { clipCursor(null); return; }
+    const p = toPhys(area);
+    clipCursor({ left: p.x, top: p.y, right: p.x + p.width, bottom: p.y + p.height });
+  } catch (e) { /* leave the mouse free */ }
+}
+function startMouseLimit() { clearInterval(clipTimer); applyMouseLimit(); clipTimer = setInterval(applyMouseLimit, 1000); }
+function releaseMouse() { clearInterval(clipTimer); try { if (clipCursor) clipCursor(null); } catch (e) {} }
+
+/** Backup for screen layouts the limit can't cover: put the mouse right back at the edge it crossed. */
 let lastPush = 0;
 function pushMouseBack() {
   if (!setCursorPos || !keepMouseOff() || !win || !win.isVisible()) return;
   const { display, strip } = pickDisplay();
   if (!strip) return;
-  const now = Date.now(); if (now - lastPush < 150) return; lastPush = now;
-  const p = screen.getCursorScreenPoint();
-  const b = display.bounds;
+  const now = Date.now(); if (now - lastPush < 100) return; lastPush = now;
+  const p = screen.getCursorScreenPoint(), b = display.bounds;
   if (p.x < b.x || p.x >= b.x + b.width || p.y < b.y || p.y >= b.y + b.height) return;
-  // The nearest other screen, and the closest point on it, a little inside its edge.
   const others = screen.getAllDisplays().filter(d => d.id !== display.id);
   if (!others.length) return;
   let best = null;
   for (const d of others) {
-    const r = d.workArea, m = 40;
-    const x = Math.min(Math.max(p.x, r.x + m), r.x + r.width - m);
-    const y = Math.min(Math.max(p.y, r.y + m), r.y + r.height - m);
+    const r = d.bounds;
+    const x = Math.min(Math.max(p.x, r.x), r.x + r.width - 1);
+    const y = Math.min(Math.max(p.y, r.y), r.y + r.height - 1);
     const dist = (x - p.x) ** 2 + (y - p.y) ** 2;
     if (!best || dist < best.dist) best = { x, y, dist };
   }
@@ -92,6 +124,7 @@ function pushMouseBack() {
     const phys = screen.dipToScreenPoint ? screen.dipToScreenPoint({ x: best.x, y: best.y }) : best;
     setCursorPos(Math.round(phys.x), Math.round(phys.y));
   } catch (e) { /* leave the mouse where it is */ }
+  applyMouseLimit();
 }
 ipcMain.on("mouse-on-strip", pushMouseBack);
 
@@ -157,7 +190,7 @@ function buildMenu() {
     { label: "Sign out of this desk", click: () => win && win.webContents.executeJavaScript("window.doorStrip && window.doorStrip.signOut()").catch(() => {}) },
     { type: "separator" },
     { label: "Keep the mouse off the touchscreen", type: "checkbox", checked: keepMouseOff(),
-      click: item => { cfg.keepMouseOff = item.checked; saveCfg(); } },
+      click: item => { cfg.keepMouseOff = item.checked; saveCfg(); applyMouseLimit(); } },
     { label: "Start when I sign in to Windows", type: "checkbox", checked: startsWithWindows(),
       click: item => app.setLoginItemSettings({ openAtLogin: item.checked }) },
     { label: `Version ${app.getVersion()}`, enabled: false },
@@ -176,11 +209,12 @@ function createTray() {
 app.on("second-instance", () => placeWindow());
 app.whenReady().then(() => {
   cfg = loadCfg();
-  loadCursorMover();
+  loadCursorTools();
   // Start with Windows from the first run; it can be turned off in the tray menu.
   if (!cfg.autoStartSet) { app.setLoginItemSettings({ openAtLogin: true }); cfg.autoStartSet = true; saveCfg(); }
   createWindow();
   createTray();
+  startMouseLimit();
   screen.on("display-added", placeSoon);
   screen.on("display-removed", placeSoon);
   screen.on("display-metrics-changed", placeSoon);
@@ -191,5 +225,5 @@ app.whenReady().then(() => {
     if (now.getHours() === 4 && lastReloadDay !== day) { lastReloadDay = day; loadStrip(); }
   }, 10 * 60 * 1000);
 });
-app.on("before-quit", () => { quitting = true; });
+app.on("before-quit", () => { quitting = true; releaseMouse(); });
 app.on("window-all-closed", () => { if (quitting) app.quit(); });
