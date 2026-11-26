@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="color-scheme" content="light only">
+<meta name="color-scheme" content="dark only">
 <title>Door Sign Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:opsz,wght@9..144,600&family=Caveat:wght@700&family=Bebas+Neue&family=Pacifico&family=Space+Mono:wght@700&family=Archivo+Black&display=swap">
@@ -11,49 +11,52 @@
 <style>
 /* Desk touchscreen, built for a 1920×480 strip under the monitor. Sizes use vh so the
    layout scales with the strip's height at any Windows display scaling.
-   Left: what the door shows now. Right: every status as a big button; swipe for more. */
+   Left: what the door shows now. Right: every status as a button, two rows at a time; swipe up for more.
+   The strip uses a dark theme so it stays calm under the monitor; the editor stays light. */
+:root{--bg:#121516;--surface:#1b1f21;--fg:#e8ebe6;--muted:#9aa39b;--line:#2d3437;--accent:#6fc196;--accent-fg:#0d1a12;--danger:#e0675a;color-scheme:dark}
 html,body{height:100%;overflow:hidden}
-body{display:flex;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-x;font-size:3.4vh}
+body{display:flex;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-y;font-size:3.4vh}
 button{font:inherit}
 
 .now{flex:0 0 auto;width:96vh;padding:4vh 3.5vh 4vh 4.5vh;display:flex;flex-direction:column;gap:2vh;border-right:1px solid var(--line);background:var(--surface)}
 .now .tag{font-size:2.5vh;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
-.now .door{width:100%;flex:1 1 auto;min-height:0;border-radius:2.4vh;box-shadow:0 0 0 .6vh #222,0 1vh 3vh rgba(0,0,0,.18);margin-top:.6vh}
+.now .door{width:100%;flex:1 1 auto;min-height:0;border-radius:2.4vh;box-shadow:0 0 0 .6vh #000,0 0 0 calc(.6vh + 1px) #3a4245,0 1vh 3vh rgba(0,0,0,.4);margin-top:.6vh}
 .now .door .s-meta{display:none}
 .now .when{font-size:3vh;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.3em}
 .now .when b{color:var(--fg);font-weight:600}
 
 .rail{position:relative;flex:1 1 auto;min-width:0}
-/* Two rows of buttons that fill column by column, so swiping sideways shows more */
-.row{height:100%;display:grid;grid-template-rows:repeat(2,minmax(0,1fr));grid-auto-flow:column;grid-auto-columns:max-content;gap:2.6vh;padding:4.5vh 4.5vh;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scroll-padding-inline:4.5vh;scrollbar-width:none;
-  overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+/* Buttons fill left to right, two rows fit on screen, and swiping up shows the next rows */
+.row{height:100%;display:grid;grid-template-columns:repeat(auto-fill,minmax(68vh,1fr));grid-auto-rows:calc((100vh - 9vh - 2.6vh) / 2);gap:2.6vh;padding:4.5vh 10vh 4.5vh 4.5vh;
+  overflow-y:auto;overflow-x:hidden;scroll-snap-type:y proximity;scroll-padding-block:4.5vh;scrollbar-width:none;align-content:start;
+  overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
 .row::-webkit-scrollbar{display:none}
-.card{position:relative;height:100%;aspect-ratio:16/10;scroll-snap-align:start;border:0;padding:0;border-radius:2.6vh;cursor:pointer;
-  box-shadow:0 0 0 1px rgba(0,0,0,.12),0 .8vh 2.4vh rgba(0,0,0,.14);transition:transform .12s,box-shadow .2s}
+.card{position:relative;width:100%;height:100%;scroll-snap-align:start;border:0;padding:0;border-radius:2.6vh;cursor:pointer;
+  box-shadow:0 0 0 1px rgba(255,255,255,.08),0 .8vh 2.4vh rgba(0,0,0,.45);transition:transform .12s,box-shadow .2s}
 .card:active{transform:scale(.97)}
 .card .s-emoji{font-size:clamp(1.4rem,17cqi,5.5rem)}
 .card .s-text{font-size:clamp(1rem,10.5cqi,3rem);max-width:90%}
 .card .s-sub{display:none}
-.card.on{box-shadow:0 0 0 .6vh var(--bg),0 0 0 1.2vh var(--accent),0 .8vh 2.4vh rgba(0,0,0,.14)}
+.card.on{box-shadow:0 0 0 .6vh var(--bg),0 0 0 1.2vh var(--accent),0 .8vh 2.4vh rgba(0,0,0,.45)}
 .badge{position:absolute;left:50%;bottom:1.6vh;transform:translateX(-50%);z-index:2;white-space:nowrap;
   background:rgba(255,255,255,.94);color:#1c211d;font-family:var(--ui);font-weight:700;font-size:2.2vh;padding:.5vh 1.6vh;border-radius:999px;box-shadow:0 .4vh 1.2vh rgba(0,0,0,.2)}
 .card.sending{opacity:.75}
 @keyframes flash{0%{box-shadow:0 0 0 .7vh var(--bg),0 0 0 2.4vh #2e9d5b}100%{box-shadow:0 0 0 .7vh var(--bg),0 0 0 1.5vh var(--accent)}}
 .card.just{animation:flash .9s ease-out}
 
-/* Arrows for mouse users and a fade that shows there's more to swipe to */
-.edge{position:absolute;top:0;bottom:0;width:9vh;pointer-events:none;z-index:3;opacity:0;transition:opacity .2s}
-.edge.l{left:0;background:linear-gradient(90deg,var(--bg),transparent)}
-.edge.r{right:0;background:linear-gradient(270deg,var(--bg),transparent)}
+/* Up and down arrows for mouse users, and a fade that shows there's more to swipe to */
+.edge{position:absolute;left:0;right:0;height:7vh;pointer-events:none;z-index:3;opacity:0;transition:opacity .2s}
+.edge.l{top:0;background:linear-gradient(180deg,var(--bg),transparent)}
+.edge.r{bottom:0;background:linear-gradient(0deg,var(--bg),transparent)}
 .edge.show{opacity:1}
-.arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:4;width:8vh;height:8vh;border-radius:50%;border:1px solid var(--line);background:var(--surface);
-  color:var(--fg);font-size:4vh;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 .4vh 1.4vh rgba(0,0,0,.15)}
-.arrow.l{left:1.5vh}.arrow.r{right:1.5vh}
+.arrow{position:absolute;right:1.4vh;z-index:4;width:7.5vh;height:7.5vh;border-radius:50%;border:1px solid var(--line);background:var(--surface);
+  color:var(--fg);font-size:3.6vh;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 .4vh 1.4vh rgba(0,0,0,.4)}
+.arrow.l{top:4.5vh}.arrow.r{bottom:4.5vh}
 
 .empty{margin:auto;color:var(--muted);text-align:center;max-width:70ch;padding:0 4vh}
-.toast{position:fixed;right:4vh;top:3vh;z-index:6;background:#1c211d;color:#fff;padding:1.4vh 2.6vh;border-radius:999px;font-weight:600;font-size:2.8vh;opacity:0;transform:translateY(-1vh);transition:opacity .2s,transform .2s;pointer-events:none}
+.toast{position:fixed;right:12vh;top:3vh;z-index:6;background:#e8ebe6;color:#121516;padding:1.4vh 2.6vh;border-radius:999px;font-weight:600;font-size:2.8vh;opacity:0;transform:translateY(-1vh);transition:opacity .2s,transform .2s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
-.toast.err{background:var(--danger)}
+.toast.err{background:var(--danger);color:#fff}
 
 /* One-time sign-in, laid out across the strip */
 .signin{position:fixed;inset:0;z-index:10;background:var(--bg);display:flex;align-items:center;justify-content:center;gap:5vh;padding:4vh 6vh}
@@ -77,8 +80,8 @@ button{font:inherit}
 <section class="rail" aria-label="Statuses">
   <div class="row" id="row"></div>
   <div class="edge l" id="edgeL"></div><div class="edge r" id="edgeR"></div>
-  <button type="button" class="arrow l" id="arrowL" aria-label="Show earlier statuses" hidden>‹</button>
-  <button type="button" class="arrow r" id="arrowR" aria-label="Show more statuses" hidden>›</button>
+  <button type="button" class="arrow l" id="arrowL" aria-label="Show earlier statuses" hidden>▲</button>
+  <button type="button" class="arrow r" id="arrowR" aria-label="Show more statuses" hidden>▼</button>
 </section>
 <div class="toast" id="toast" role="status"></div>
 
@@ -212,23 +215,22 @@ function showToast(msg, err = false, ms = 2200) {
   clearTimeout(toastT); if (ms) toastT = setTimeout(() => t.classList.remove("show"), ms);
 }
 
-/* ---------- Scrolling: swipe, mouse wheel, or the arrows ---------- */
+/* ---------- Scrolling: swipe up and down, mouse wheel, or the arrows ---------- */
 const row = $("row");
 function edges() {
-  const more = row.scrollWidth - row.clientWidth;
-  const atL = row.scrollLeft <= 4, atR = row.scrollLeft >= more - 4;
-  $("edgeL").classList.toggle("show", more > 4 && !atL);
-  $("edgeR").classList.toggle("show", more > 4 && !atR);
-  $("arrowL").hidden = more <= 4 || atL;
-  $("arrowR").hidden = more <= 4 || atR;
+  const more = row.scrollHeight - row.clientHeight;
+  const atTop = row.scrollTop <= 4, atEnd = row.scrollTop >= more - 4;
+  $("edgeL").classList.toggle("show", more > 4 && !atTop);
+  $("edgeR").classList.toggle("show", more > 4 && !atEnd);
+  $("arrowL").hidden = more <= 4 || atTop;
+  $("arrowR").hidden = more <= 4 || atEnd;
 }
 row.addEventListener("scroll", edges, { passive: true });
 addEventListener("resize", edges);
-row.addEventListener("wheel", e => {
-  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); row.scrollBy({ left: e.deltaY * 1.5 }); }
-}, { passive: false });
-$("arrowL").onclick = () => row.scrollBy({ left: -row.clientWidth * 0.8, behavior: "smooth" });
-$("arrowR").onclick = () => row.scrollBy({ left: row.clientWidth * 0.8, behavior: "smooth" });
+// Each arrow moves by two rows (one screenful).
+const page = () => row.clientHeight - parseFloat(getComputedStyle(row).paddingTop) * 2 + parseFloat(getComputedStyle(row).rowGap || 0);
+$("arrowL").onclick = () => row.scrollBy({ top: -page(), behavior: "smooth" });
+$("arrowR").onclick = () => row.scrollBy({ top: page(), behavior: "smooth" });
 addEventListener("contextmenu", e => e.preventDefault());
 
 // Schedules start and end on their own, so check every 15 seconds.
